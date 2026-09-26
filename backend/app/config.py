@@ -67,6 +67,10 @@ class VisionConfig:
     morph_kernel: int = 5
     # Stacking: two boxes overlap by at least this fraction of the smaller box.
     stack_overlap_ratio: float = 0.30
+    # Angled camera: boxes that merely touch count as stacked when the upper one's bottom edge is
+    # within this distance of the lower one's top edge and they share this much width.
+    stack_touch_tolerance: float = 0.015
+    stack_min_width_overlap: float = 0.6
     colors: list[ColorRange] = field(default_factory=default_colors)
     zones: list[Zone] = field(default_factory=default_zones)
 
@@ -75,9 +79,9 @@ class VisionConfig:
 class StabilityConfig:
     stable_ms: float = 700.0  # arrangement must stay unchanged this long
     min_frames: int = 3  # ...and across at least this many frames
-    # Mean absolute grayscale difference between consecutive frames (0-255 scale).
-    # Above this the scene is considered "moving" (a hand is working) and nothing is committed.
-    motion_threshold: float = 6.0
+    # Percent of pixels that changed since the previous frame. Above this the scene is considered
+    # "moving" (a hand is working) and nothing is committed.
+    motion_threshold: float = 1.5
     motion_gate_enabled: bool = True
 
 

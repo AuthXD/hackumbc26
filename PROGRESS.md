@@ -28,3 +28,15 @@ Key decisions:
 - One-command startup: `npm run setup` once, then `npm run dev` (concurrently runs uvicorn :8000 + Vite :5173 with /api and /ws proxied).
 - Verified: `curl localhost:5173/api/health` → `{"ok":true}`; Python ws probe through the Vite proxy returned `{"type":"update","frame":{"w":640,"h":480,...}}`; `tsc` clean.
 - Note: the IDE browser pane blocks camera permission, so the real webcam must be checked in Chrome/Edge. A synthetic frame source is being added for automated end-to-end checks.
+
+### Milestone 2 — vision (done)
+- `backend/app/vision.py`: HSV segmentation (largest blob per configured color), center → zone rectangle,
+  stacking from bbox overlap (overhead) or bottom-edge-on-top-edge contact (angled camera), stacked objects inherit
+  the base's zone. `MotionMeter` = % of pixels changed between frames (a mean diff was too diluted by small hands).
+- All thresholds in `backend/app/config.py`.
+- Frontend: `Overlay.tsx` draws zones + labeled boxes; `Simulator.tsx` is a draggable synthetic tabletop whose canvas
+  goes through the identical JPEG → WS → OpenCV path (used for automated E2E checks; also a camera-failure fallback, `?sim`).
+- Verified: `npm test` → 7 passed (synthetic JPEG-roundtripped frames: 4-color zones, off-zone, overhead stack,
+  angled stack, adjacent-not-stacked, skin/speck rejection, motion meter). In the browser pane (sim source) dragging red
+  to B and yellow onto red produced `yellow on red · B`; frame processing ~8–9 ms.
+- Gotcha: writing files with `cat >` while Vite runs on Windows can cache an empty module; use atomic writes.
