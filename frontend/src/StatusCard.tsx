@@ -59,7 +59,11 @@ export function statusView(u: ServerUpdate | null): View {
       eyebrow: `Practice · ${p.completed.length} of ${u.procedure?.steps.length ?? 0} done`,
       headline: p.headline,
       expected: p.status === "setup" ? `Starting layout: ${p.expectedDescription}` : p.expectedDescription,
-      observed: activity && p.status !== "error" ? activity : p.observedDescription || (activity ?? sceneSummary(u)),
+      // Live "hands moving" feedback while waiting; keep verdicts (error/complete) on screen.
+      observed:
+        activity && (p.status === "waiting" || p.status === "setup")
+          ? activity
+          : p.observedDescription || (activity ?? sceneSummary(u)),
       fix: p.fixHint || undefined,
     };
   }

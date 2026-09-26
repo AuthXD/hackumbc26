@@ -10,6 +10,8 @@ import { useFrameStream } from "./useFrameStream";
 
 type Source = "camera" | "sim";
 
+const CAL_ORDER = ["red", "yellow", "green", "blue"];
+
 const TRACKER_LABEL: Record<TrackerStatus, string> = {
   stable: "Stable",
   settling: "Settling…",
@@ -28,6 +30,7 @@ export default function App() {
   const [muted, setMuted] = useState(false);
   const [aspect, setAspect] = useState(4 / 3);
   const [fps, setFps] = useState(0);
+  const [calibrating, setCalibrating] = useState<string | null>(null); // color being calibrated
   const frameTimes = useRef<number[]>([]);
 
   const onMessage = useCallback((m: ServerUpdate) => {
@@ -126,6 +129,13 @@ export default function App() {
               Simulator
             </button>
           </div>
+          <button
+            className="ghost"
+            aria-pressed={!!calibrating}
+            onClick={() => setCalibrating((c) => (c ? null : CAL_ORDER[0]))}
+          >
+            {calibrating ? "Done calibrating" : "Calibrate colors"}
+          </button>
           <button className="ghost" onClick={() => setMuted((v) => !v)} aria-pressed={muted}>
             {muted ? "Voice off" : "Voice on"}
           </button>
@@ -159,10 +169,48 @@ export default function App() {
 
       <main className="stage">
         <section className="camera-panel">
-          <div className="camera-frame" style={{ aspectRatio: String(aspect) }}>
+          {calibrating && (
+            <div className="calibrate-bar">
+              <span>Click the</span>
+              {CAL_ORDER.map((c) => (
+                <button
+                  key={c}
+                  className={`chip ${c === calibrating ? "on" : ""}`}
+                  style={{ ["--chip" as string]: u?.colors?.[c] ?? c }}
+                  onClick={() => setCalibrating(c)}
+                >
+                  {c}
+                </button>
+              ))}
+              <span>object in the view.</span>
+              <button className="chip reset" onClick={() => send({ type: "reset_colors" })}>
+                Reset colors
+              </button>
+            </div>
+          )}
+          <div
+            className="camera-frame"
+            style={{ aspectRatio: String(aspect), width: `min(100%, calc(var(--cam-h) * ${aspect}))` }}
+          >
             <video ref={videoRef} muted playsInline className="camera-media" hidden={source !== "camera"} />
             {source === "sim" && <Simulator ref={simRef} zones={u?.zones ?? []} />}
             <Overlay scene={u?.scene ?? undefined} zones={u?.zones ?? []} activeZones={activeZones} />
+            {calibrating && (
+              <div
+                className="calibrate-capture"
+                onClick={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  send({
+                    type: "calibrate",
+                    color: calibrating,
+                    x: (e.clientX - r.left) / r.width,
+                    y: (e.clientY - r.top) / r.height,
+                  });
+                  const next = CAL_ORDER[CAL_ORDER.indexOf(calibrating) + 1];
+                  setCalibrating(next ?? null);
+                }}
+              />
+            )}
             {tracker && (
               <span className={`tracker-chip t-${tracker.status}`}>
                 <i />

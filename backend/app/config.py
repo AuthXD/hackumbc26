@@ -14,9 +14,10 @@ from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = BACKEND_ROOT / "data"
-
 load_dotenv(REPO_ROOT / ".env")
+
+# Learned procedure, keyframes, and color calibration live here (tests point it at a temp dir).
+DATA_DIR = Path(os.getenv("TEACHBACK_DATA_DIR") or BACKEND_ROOT / "data")
 
 
 @dataclass

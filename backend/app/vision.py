@@ -10,7 +10,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from .config import VisionConfig
+from .config import ColorRange, VisionConfig
 from .models import SceneObject, SceneState
 
 BOTTOM_EDGE_TOLERANCE = 0.02  # normalized; below this, "which box sits lower" is a tie
@@ -134,6 +134,36 @@ def assign_zones(objects: list[SceneObject], cfg: VisionConfig) -> None:
             base = by_id[base.stacked_on]
             seen.add(base.id)
         o.zone = base.zone
+
+
+def sample_hsv(frame_bgr: np.ndarray, x: float, y: float, radius: int = 4) -> tuple[int, int, int]:
+    """Median HSV of a small patch around normalized point (x, y)."""
+    H, W = frame_bgr.shape[:2]
+    cx, cy = int(x * (W - 1)), int(y * (H - 1))
+    patch = frame_bgr[max(0, cy - radius): cy + radius + 1, max(0, cx - radius): cx + radius + 1]
+    hsv = cv2.cvtColor(cv2.GaussianBlur(patch, (3, 3), 0), cv2.COLOR_BGR2HSV).reshape(-1, 3)
+    h = hsv[:, 0].astype(int)
+    # Hue is circular (0 and 179 are both red): take the median after rotating away from the seam.
+    if np.ptp(h) > 90:
+        h = (h + 90) % 180
+        med_h = (int(np.median(h)) - 90) % 180
+    else:
+        med_h = int(np.median(h))
+    return med_h, int(np.median(hsv[:, 1])), int(np.median(hsv[:, 2]))
+
+
+def color_from_sample(name: str, display: str, hsv: tuple[int, int, int], hue_tol: int = 9) -> ColorRange:
+    """HSV band(s) centered on a sampled pixel; splits the band when it crosses hue 0/179."""
+    h, s, v = hsv
+    lo_s, lo_v = max(60, int(s * 0.55)), max(40, int(v * 0.45))
+    lo_h, hi_h = h - hue_tol, h + hue_tol
+    if lo_h < 0:
+        bands = [((0, lo_s, lo_v), (hi_h, 255, 255)), ((180 + lo_h, lo_s, lo_v), (179, 255, 255))]
+    elif hi_h > 179:
+        bands = [((lo_h, lo_s, lo_v), (179, 255, 255)), ((0, lo_s, lo_v), (hi_h - 180, 255, 255))]
+    else:
+        bands = [((lo_h, lo_s, lo_v), (hi_h, 255, 255))]
+    return ColorRange(name, bands, display)
 
 
 def suppress_static_stacks(scene: SceneState, reference: SceneState | None, cfg: VisionConfig) -> SceneState:

@@ -1,0 +1,30 @@
+"""Smoke tests for the real FastAPI app: startup, websocket frames, commands, calibration."""
+
+from fastapi.testclient import TestClient
+
+from app.main import app
+from app.session import Session
+
+from .test_session import START, frame
+
+
+def test_app_starts_and_websocket_round_trips():
+    with TestClient(app) as client:
+        assert client.get("/api/health").json()["ok"] is True
+        with client.websocket_connect("/ws") as ws:
+            hello = ws.receive_json()
+            assert hello["type"] == "update" and "mode" in hello
+            ws.send_bytes(frame(START))
+            update = ws.receive_json()
+            assert {o["id"] for o in update["scene"]["objects"]} == {"red", "blue", "yellow", "green"}
+            assert update["active"] is True
+            ws.send_json({"type": "command", "action": "reset"})
+            assert ws.receive_json()["mode"] == "idle"
+
+
+def test_session_calibration_updates_color_range():
+    s = Session(persist=False)
+    s.process_frame(frame(START), now=1.0)
+    snap = s.calibrate("red", 0.17, 0.28)  # red block's position (zone A, slot 0)
+    assert snap["notice"].startswith("Calibrated red")
+    assert s.reset_colors()["notice"] == "Colors reset to defaults."

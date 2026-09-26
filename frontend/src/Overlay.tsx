@@ -35,10 +35,12 @@ export function Overlay({ scene, zones, activeZones }: { scene?: SceneState; zon
       ctx.font = "700 18px Inter, system-ui, sans-serif";
       const label = z.label;
       const tw = ctx.measureText(label).width;
+      // Label sits at the bottom of the zone so it rarely collides with object labels.
+      const ly = (z.y + z.h) * H - 34;
       ctx.fillStyle = "rgba(10,14,20,0.72)";
-      ctx.fillRect(z.x * W + 6, z.y * H + 6, tw + 16, 28);
+      ctx.fillRect(z.x * W + 6, ly, tw + 16, 28);
       ctx.fillStyle = "#fff";
-      ctx.fillText(label, z.x * W + 14, z.y * H + 26);
+      ctx.fillText(label, z.x * W + 14, ly + 20);
     }
 
     for (const o of scene?.objects ?? []) {

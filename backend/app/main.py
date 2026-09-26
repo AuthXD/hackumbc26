@@ -75,6 +75,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 if cmd.get("type") == "command":
                     snap = await asyncio.to_thread(session.command, str(cmd.get("action", "")))
                     await hub.broadcast(snap)
+                elif cmd.get("type") == "calibrate":
+                    snap = session.calibrate(str(cmd.get("color")), float(cmd.get("x", -1)), float(cmd.get("y", -1)))
+                    await hub.broadcast(snap)
+                elif cmd.get("type") == "reset_colors":
+                    await hub.broadcast(session.reset_colors())
     except WebSocketDisconnect:
         pass
     finally:

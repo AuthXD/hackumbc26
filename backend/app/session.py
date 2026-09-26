@@ -8,16 +8,25 @@ import time
 import uuid
 from typing import Literal
 
-from .config import DATA_DIR, Settings, settings
+from .config import DATA_DIR, ColorRange, Settings, default_colors, settings
 from .engine import Event, PracticeEngine, TeachRecorder, speak
 from .models import Procedure, SceneState, StepText
 from .stability import StabilityTracker, TrackerResult
-from .vision import MotionMeter, analyze_frame, decode_jpeg, downscale, suppress_static_stacks
+from .vision import (
+    MotionMeter,
+    analyze_frame,
+    color_from_sample,
+    decode_jpeg,
+    downscale,
+    sample_hsv,
+    suppress_static_stacks,
+)
 
 Mode = Literal["idle", "teaching", "practicing"]
 
 PROCEDURE_FILE = DATA_DIR / "procedure.json"
 KEYFRAME_DIR = DATA_DIR / "keyframes"
+CALIBRATION_FILE = DATA_DIR / "calibration.json"
 
 
 class Session:
@@ -33,12 +42,14 @@ class Session:
         self.procedure: Procedure | None = None
         self.keyframes: dict[str, bytes] = {}
         self.last_scene: SceneState | None = None
+        self.last_frame = None  # most recent downscaled BGR frame, for color calibration
         self.last_tracker: TrackerResult | None = None
         self.reference_scene: SceneState | None = None  # last committed stable state
         self.notice = ""  # one-line feedback for the last command
         self.pending_ai: list[int] = []  # learned step indexes awaiting an AI description
         if persist:
             self._load()
+            self._load_calibration()
 
     # -- frames ---------------------------------------------------------------------------------
 
@@ -58,7 +69,7 @@ class Session:
             if result.new_stable is not None:
                 self.reference_scene = result.new_stable
                 events = self._on_stable(result.new_stable, jpeg)
-            self.last_scene, self.last_tracker = scene, result
+            self.last_scene, self.last_tracker, self.last_frame = scene, result, small
             snap = self.snapshot(events)
         snap["frameMs"] = round((time.perf_counter() - t0) * 1000, 1)
         return snap
@@ -137,6 +148,48 @@ class Session:
         self.tracker.reset()
         self.notice = "Reset. Ready to teach a new procedure."
         return []
+
+    # -- color calibration ----------------------------------------------------------------------
+
+    def calibrate(self, color: str, x: float, y: float) -> dict:
+        """Re-center one color's HSV range on the pixel the user clicked."""
+        with self.lock:
+            idx = next((i for i, c in enumerate(self.cfg.vision.colors) if c.name == color), None)
+            if idx is None or self.last_frame is None or not (0 <= x <= 1 and 0 <= y <= 1):
+                self.notice = "Calibration needs a live frame and a known color."
+                return self.snapshot()
+            hsv = sample_hsv(self.last_frame, x, y)
+            old = self.cfg.vision.colors[idx]
+            self.cfg.vision.colors[idx] = color_from_sample(old.name, old.display, hsv)
+            self.notice = f"Calibrated {color} (H{hsv[0]} S{hsv[1]} V{hsv[2]})."
+            self._save_calibration()
+            return self.snapshot()
+
+    def reset_colors(self) -> dict:
+        with self.lock:
+            self.cfg.vision.colors = default_colors()
+            if self.persist:
+                CALIBRATION_FILE.unlink(missing_ok=True)
+            self.notice = "Colors reset to defaults."
+            return self.snapshot()
+
+    def _save_calibration(self) -> None:
+        if not self.persist:
+            return
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        data = [{"name": c.name, "display": c.display, "bands": c.bands} for c in self.cfg.vision.colors]
+        CALIBRATION_FILE.write_text(json.dumps(data, indent=2))
+
+    def _load_calibration(self) -> None:
+        if not CALIBRATION_FILE.exists():
+            return
+        try:
+            data = json.loads(CALIBRATION_FILE.read_text())
+            self.cfg.vision.colors = [
+                ColorRange(d["name"], [(tuple(lo), tuple(hi)) for lo, hi in d["bands"]], d["display"]) for d in data
+            ]
+        except Exception as exc:  # a bad file must never stop the demo
+            self.notice = f"Ignored unreadable color calibration: {exc}"
 
     # -- helpers --------------------------------------------------------------------------------
 

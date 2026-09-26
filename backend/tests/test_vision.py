@@ -1,6 +1,6 @@
 from app.config import VisionConfig
 from app.models import SceneState
-from app.vision import MotionMeter, detect_objects, suppress_static_stacks
+from app.vision import MotionMeter, color_from_sample, detect_objects, sample_hsv, suppress_static_stacks
 
 from .synthetic import SKIN, as_jpeg_roundtrip, blank, draw_block, zone_center
 
@@ -94,3 +94,20 @@ def test_new_tower_touching_a_stationary_object_does_not_stack_it():
     fixed = {o.id: o for o in suppress_static_stacks(SceneState(objects=list(raw.values())), ref, cfg).objects}
     assert fixed["green"].stacked_on is None and fixed["green"].zone == "A"
     assert fixed["yellow"].stacked_on == "blue"
+
+
+def test_click_calibration_recovers_an_off_default_color():
+    cfg = VisionConfig()
+    img = blank()
+    draw_block(img, "red", zone_center("B", 1), half=30, bgr=(110, 110, 190))  # washed-out red under harsh light (S≈107)
+    assert "red" not in {o.id for o in detect_objects(img, cfg)}
+    cx, cy = zone_center("B", 1)
+    hsv = sample_hsv(img, cx / img.shape[1], cy / img.shape[0])
+    cfg.colors[0] = color_from_sample("red", "#f00", hsv)
+    found = {o.id: o for o in detect_objects(img, cfg)}
+    assert found["red"].zone == "B"
+
+
+def test_calibration_band_wraps_around_hue_zero():
+    band = color_from_sample("red", "#f00", (3, 200, 200)).bands
+    assert len(band) == 2 and band[0][0][0] == 0 and band[1][1][0] == 179

@@ -10,6 +10,8 @@
   --warning: #fbbf24;
   --error: #f87171;
   --radius: 14px;
+  /* Camera height budget so header, stage, and timeline fit one screen. */
+  --cam-h: max(300px, calc(100vh - 450px));
   color-scheme: dark;
 }
 
@@ -80,10 +82,11 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
 .notice { color: var(--muted); font-size: 15px; margin-left: 6px; }
 
 /* ---------- stage ---------- */
-.stage { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, 1fr); gap: 16px; align-items: start; }
+.stage { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, 1fr); gap: 16px; align-items: stretch; }
 @media (max-width: 1100px) { .stage { grid-template-columns: 1fr; } }
 
-.camera-panel { display: flex; flex-direction: column; gap: 8px; }
+.camera-panel { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.camera-panel .hint { align-self: flex-start; }
 .camera-frame {
   position: relative; width: 100%; background: #000; border-radius: var(--radius);
   overflow: hidden; border: 1px solid var(--line);
@@ -113,6 +116,16 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
 .camera-error strong { font-size: 22px; }
 .camera-error span { color: var(--muted); }
 
+.calibrate-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; align-self: stretch; font-size: 15px; color: var(--muted); }
+.chip {
+  --chip: var(--muted);
+  background: transparent; border: 2px solid var(--chip); color: var(--text); border-radius: 999px; padding: 4px 12px;
+  font-size: 14px; font-weight: 600; text-transform: capitalize;
+}
+.chip.on { background: var(--chip); color: #0a0d12; }
+.chip.reset { --chip: var(--line); color: var(--muted); margin-left: auto; text-transform: none; }
+.calibrate-capture { position: absolute; inset: 0; cursor: crosshair; background: rgba(255, 255, 255, 0.04); }
+
 /* ---------- status card ---------- */
 .status {
   --tone: var(--neutral);
@@ -121,7 +134,6 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
   border-left: 8px solid var(--tone);
   border-radius: var(--radius);
   padding: 22px 26px 24px;
-  min-height: 100%;
   transition: border-color 0.25s, background 0.25s;
 }
 .tone-success { --tone: var(--success); }
@@ -146,7 +158,7 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
 .slot {
   --tone: var(--line);
   background: var(--panel); border: 1px solid var(--line); border-top: 4px solid var(--tone);
-  border-radius: var(--radius); padding: 14px 16px; min-height: 150px;
+  border-radius: var(--radius); padding: 12px 16px; min-height: 130px;
   transition: border-color 0.25s, opacity 0.25s;
 }
 .slot-learned, .slot-done { --tone: var(--success); }
@@ -168,7 +180,7 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
 .slot-rule { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
 .muted { color: var(--muted); }
 .slot-frames { display: flex; align-items: center; gap: 6px; margin-top: 10px; color: var(--muted); }
-.slot-frames img { width: calc(50% - 10px); aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+.slot-frames img { width: calc(50% - 10px); max-height: 84px; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
 
 /* ---------- debug ---------- */
 .debug { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 16px; color: var(--muted); font-size: 13px; }

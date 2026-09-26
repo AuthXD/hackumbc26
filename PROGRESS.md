@@ -59,3 +59,13 @@ Key decisions:
   green→B; practice caught "Skipped step 2" with fix hint, undo → "Back on track", finished → "Procedure complete".
 - Perf fix: `canvas.toBlob` measured 500–1000 ms in Chromium → switched to sync `toDataURL`; steady 5.0 fps.
 - Ops: uvicorn `--reload` hangs on Windows with open websockets → `npm run dev` runs without reload; `npm run stop` frees ports.
+
+### Milestone 5 — polish, recovery, calibration (done)
+- One-screen layout at 1440×900 (camera height budgeted by viewport); big status card with Expected / Observed / Fix;
+  timeline with before→after keyframes; expected target zone highlighted during practice; presenter keys T/F/U/P/R/M.
+- Click-to-calibrate colors (header → "Calibrate colors" → click each object); stored in `backend/data/calibration.json`;
+  "Reset colors" restores defaults. Camera-failure panel offers the simulator.
+- Recovery: Restart Practice, Reset, explicit Undo last step while teaching; saved procedure reloads on backend restart.
+- Safety: tests now use a temp `TEACHBACK_DATA_DIR` (an earlier smoke test had wiped the real saved procedure).
+- Verified: `npm test` → 63 passed (adds app smoke test via TestClient + calibration tests); browser: calibration
+  clicks sampled red H0 S207 V212 / yellow H26 S213 V242 and detection stayed 99–100%; reset colors OK.
