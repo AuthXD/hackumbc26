@@ -4,13 +4,13 @@
 
 | # | Milestone | Status |
 |---|-----------|--------|
-| 1 | Scaffold FastAPI + React/Vite, one-command startup, webcam → WebSocket → response | in progress |
-| 2 | HSV object detection, zones, stacking, SceneState JSON, synthetic-image tests | todo |
-| 3 | Stable-state filter, Teach mode, 4-step timeline | todo |
-| 4 | Practice mode (correct / skipped / out-of-order / wrong object / wrong zone), unit tests | todo |
-| 5 | UI polish, reset/recovery, repeatable demo | todo |
-| 6 | Gemini step naming + ElevenLabs voice, both with fallbacks | todo |
-| 7 | Hardening, clean-start test, README / DEMO_SCRIPT / ARCHITECTURE / DEVPOST | todo |
+| 1 | Scaffold FastAPI + React/Vite, one-command startup, webcam → WebSocket → response | done |
+| 2 | HSV object detection, zones, stacking, SceneState JSON, synthetic-image tests | done |
+| 3 | Stable-state filter, Teach mode, 4-step timeline | done |
+| 4 | Practice mode (correct / skipped / out-of-order / wrong object / wrong zone), unit tests | done |
+| 5 | UI polish, reset/recovery, repeatable demo | done |
+| 6 | Gemini step naming + ElevenLabs voice, both with fallbacks | done |
+| 7 | Hardening, clean-start test, README / DEMO_SCRIPT / ARCHITECTURE / DEVPOST | done |
 
 Key decisions:
 - Python 3.12 venv (`backend/.venv`) — OpenCV wheels are reliable there; system default is 3.14.
@@ -83,3 +83,33 @@ Key decisions:
   Live: `/api/health` → gemini/elevenlabs false, `/api/speak` → 503.
 - `npm run demo:check` (live server, real WS + OpenCV, simulated hand): **3/3 consecutive runs passed** —
   skipped_step, wrong_object, wrong_placement, each undone/fixed and completed.
+
+### Milestone 7 — hardening + docs (done)
+- Clean-start test: fresh `git clone` → `npm install` → `npm run setup` → `npm test` (68 passed) →
+  `npm run typecheck` → `npm run build` (237 kB JS) → `npm run dev` → `npm run demo:check` (3/3 passed), no API keys.
+- Bug found by the clean start: setup failed when the path contains a space ("C:UsersKomal Tummala...") because
+  absolute executables were spawned through a shell — fixed (shell only for bare `py`/`npm`).
+- Fixed a StrictMode race that flashed "Offline" on load. Camera-denied panel verified (offers the simulator).
+- Docs: README (Windows setup, physical setup, demo flow, calibration, troubleshooting, limitations),
+  ARCHITECTURE.md, DEMO_SCRIPT.md (60 s), DEVPOST.md (incl. track notes).
+
+## MVP verification checklist
+- [x] New procedure taught without code edits (browser sim + 3 different procedures in demo:check + 25 random orders in tests)
+- [x] Timeline shows four meaningful steps with before/after keyframes
+- [x] Correct attempt completes
+- [x] Error types caught: skipped_step, out_of_order, wrong_object, wrong_placement, extra_change
+- [x] Correct an error and continue (undo → "Back on track"; wrong zone fixed directly)
+- [x] Reset works (and a different procedure can then be taught)
+- [x] Full demo 3× consecutively (`npm run demo:check`, live server)
+- [x] Starts from documented commands (clean clone)
+- [x] Missing API keys don't break the core demo
+- [ ] **Real laptop webcam** — not verifiable from the dev environment (its browser blocks cameras); run once in
+      Chrome with the real objects and calibrate colors.
+
+## Current commands
+`npm run setup` · `npm run dev` · `npm test` · `npm run demo:check` · `npm run typecheck` · `npm run stop`
+
+## Next tasks
+1. Real-webcam rehearsal with the physical objects under venue lighting; tune `motion_threshold` / calibrate.
+2. Add `GEMINI_API_KEY` / `ELEVENLABS_API_KEY` to `.env` and confirm AI step titles + voice live.
+3. Optional: HTTPS dev server for the iPhone camera path.

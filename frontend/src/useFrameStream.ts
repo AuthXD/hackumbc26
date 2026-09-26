@@ -51,6 +51,7 @@ export function useFrameStream<T>(
         if (typeof ev.data === "string") onMessageRef.current(JSON.parse(ev.data) as T);
       };
       ws.onclose = () => {
+        if (wsRef.current !== ws) return; // a replaced socket closing late must not flip the status
         setConnection("closed");
         if (!closedByUs) retry = window.setTimeout(connect, 1000);
       };

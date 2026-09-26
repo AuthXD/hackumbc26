@@ -1,7 +1,7 @@
 // One-time setup: backend virtualenv + pip install, then frontend npm install.
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -13,7 +13,8 @@ const venvPython = win
 
 function run(cmd, args, cwd = root) {
   console.log(`\n> ${cmd} ${args.join(" ")}`);
-  const r = spawnSync(cmd, args, { cwd, stdio: "inherit", shell: win });
+  // Bare commands (py, npm) need a shell on Windows; absolute paths may contain spaces, so never shell those.
+  const r = spawnSync(cmd, args, { cwd, stdio: "inherit", shell: win && !isAbsolute(cmd) });
   if (r.status !== 0) {
     console.error(`Command failed: ${cmd} ${args.join(" ")}`);
     process.exit(r.status ?? 1);
