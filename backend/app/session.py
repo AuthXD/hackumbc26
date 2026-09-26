@@ -222,13 +222,37 @@ class Session:
             return self.recorder.procedure()
         return self.procedure
 
-    def set_ai_description(self, index: int, text: StepText) -> None:
+    def take_pending_ai(self) -> list[tuple[int, str | None]]:
+        """Learned steps that still need AI wording, as (index, after_image) identity pairs."""
         with self.lock:
             proc = self.current_procedure()
-            if proc and index < len(proc.steps):
-                proc.steps[index].ai_description = text
-                if self.procedure is proc or self.mode != "teaching":
-                    self._save()
+            out = [
+                (i, proc.steps[i].after_image)
+                for i in self.pending_ai
+                if proc and i < len(proc.steps) and proc.steps[i].ai_description is None
+            ]
+            self.pending_ai.clear()
+            return out
+
+    def step_for_ai(self, index: int, after_image: str | None):
+        """The step to describe, or None if it was undone/replaced meanwhile."""
+        with self.lock:
+            proc = self.current_procedure()
+            if not proc or index >= len(proc.steps) or proc.steps[index].after_image != after_image:
+                return None
+            step = proc.steps[index]
+            before, after = self.step_images(index)
+            return step, before, after
+
+    def set_ai_description(self, index: int, after_image: str | None, text: StepText) -> bool:
+        with self.lock:
+            proc = self.current_procedure()
+            if not proc or index >= len(proc.steps) or proc.steps[index].after_image != after_image:
+                return False  # the step changed while Gemini was thinking
+            proc.steps[index].ai_description = text
+            if self.procedure is not None:
+                self._save()
+            return True
 
     def step_images(self, index: int) -> tuple[bytes | None, bytes | None]:
         proc = self.current_procedure()

@@ -28,3 +28,11 @@ def test_session_calibration_updates_color_range():
     snap = s.calibrate("red", 0.17, 0.28)  # red block's position (zone A, slot 0)
     assert snap["notice"].startswith("Calibrated red")
     assert s.reset_colors()["notice"] == "Colors reset to defaults."
+
+
+def test_speak_without_key_returns_503_so_browser_falls_back(monkeypatch):
+    from app import main
+
+    monkeypatch.setattr(main.voice.cfg, "elevenlabs_api_key", "")
+    with TestClient(app) as client:
+        assert client.post("/api/speak", json={"text": "hello"}).status_code == 503

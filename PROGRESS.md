@@ -69,3 +69,17 @@ Key decisions:
 - Safety: tests now use a temp `TEACHBACK_DATA_DIR` (an earlier smoke test had wiped the real saved procedure).
 - Verified: `npm test` → 63 passed (adds app smoke test via TestClient + calibration tests); browser: calibration
   clicks sampled red H0 S207 V212 / yellow H26 S213 V242 and detection stayed 99–100%; reset colors OK.
+
+### Milestone 6 — Gemini + ElevenLabs with fallbacks (done, keys not yet provided)
+- `integrations.py`: `GeminiDescriber` calls `models/{GEMINI_MODEL}:generateContent` (default `gemini-3.5-flash`;
+  docs checked 2026-09: 2.5 Flash is restricted for new projects) with the StepDelta JSON + before/after keyframes,
+  `responseMimeType=application/json` + `responseSchema {title, instruction}`. Response is validated (strict JSON,
+  length limits, must mention every handled object's color) and cached per delta. Runs in the background after a
+  step is learned; stale results (step undone meanwhile) are discarded. Never used for pass/fail.
+- `ElevenLabsVoice` + `POST /api/speak` proxy (`eleven_flash_v2_5`), LRU-cached; returns 503 when absent/failing and
+  the browser falls back to `speechSynthesis` per utterance. Only step completion, errors, and mode changes are spoken.
+- Verified: `npm test` → 68 passed (mock-transport tests: success + cache, HTTP 500, garbage JSON, empty body,
+  network error, missing key, hallucination guard; ElevenLabs success/cache/401/missing key; `/api/speak` → 503).
+  Live: `/api/health` → gemini/elevenlabs false, `/api/speak` → 503.
+- `npm run demo:check` (live server, real WS + OpenCV, simulated hand): **3/3 consecutive runs passed** —
+  skipped_step, wrong_object, wrong_placement, each undone/fixed and completed.
