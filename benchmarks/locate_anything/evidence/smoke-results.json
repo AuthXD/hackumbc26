@@ -1,0 +1,718 @@
+{
+  "recorded_at": "2026-09-26T17:18:52.682252+00:00",
+  "manifest": {
+    "purpose": "runtime_smoke_only",
+    "image_kind": "existing_non_demo_images",
+    "labels": [
+      "apple",
+      "beaker"
+    ],
+    "demo_critical_labels": [],
+    "scenes": [
+      {
+        "id": "apples",
+        "image": "data/smoke/apples.jpg",
+        "objects": [
+          {
+            "label": "apple",
+            "bbox": [
+              0.145,
+              0.342,
+              0.39,
+              0.7
+            ]
+          },
+          {
+            "label": "apple",
+            "bbox": [
+              0.404,
+              0.36,
+              0.622,
+              0.692
+            ]
+          },
+          {
+            "label": "apple",
+            "bbox": [
+              0.648,
+              0.385,
+              0.849,
+              0.688
+            ]
+          }
+        ]
+      },
+      {
+        "id": "beaker",
+        "image": "data/smoke/test.png",
+        "objects": [
+          {
+            "label": "beaker",
+            "bbox": [
+              0.238,
+              0.199,
+              0.659,
+              0.687
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "model": "/home/authxd/models/locate-anything-q6_k.gguf",
+  "mode": "hybrid",
+  "max_edge": 640,
+  "requests": [
+    {
+      "id": 0,
+      "scene_id": "apples",
+      "status": "ok",
+      "type": "result",
+      "inference_s": 1.5969115609999989,
+      "raw": {
+        "detections": [
+          {
+            "label": "apple",
+            "box": [
+              94.08,
+              162.495,
+              247.68,
+              326.403
+            ]
+          },
+          {
+            "label": "apple",
+            "box": [
+              261.76,
+              173.328,
+              396.16,
+              323.577
+            ]
+          },
+          {
+            "label": "apple",
+            "box": [
+              417.28,
+              183.69,
+              540.8,
+              320.751
+            ]
+          }
+        ]
+      },
+      "detections": [
+        {
+          "label": "apple",
+          "bbox": [
+            0.147,
+            0.34500000000000003,
+            0.387,
+            0.6930000000000001
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        },
+        {
+          "label": "apple",
+          "bbox": [
+            0.409,
+            0.368,
+            0.619,
+            0.6869999999999999
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        },
+        {
+          "label": "apple",
+          "bbox": [
+            0.6519999999999999,
+            0.39,
+            0.845,
+            0.6809999999999999
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        }
+      ],
+      "round_trip_s": 1.5980003000004217,
+      "score": {
+        "correct": 3,
+        "expected": 3,
+        "false_positives": 0
+      }
+    },
+    {
+      "id": 1,
+      "scene_id": "beaker",
+      "status": "ok",
+      "type": "result",
+      "inference_s": 1.3344959860000074,
+      "raw": {
+        "detections": [
+          {
+            "label": "beaker",
+            "box": [
+              114.95,
+              109.44,
+              323.95,
+              439.04
+            ]
+          }
+        ]
+      },
+      "detections": [
+        {
+          "label": "beaker",
+          "bbox": [
+            0.242,
+            0.17099999999999999,
+            0.6819999999999999,
+            0.686
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        }
+      ],
+      "round_trip_s": 1.3355503999919165,
+      "score": {
+        "correct": 1,
+        "expected": 1,
+        "false_positives": 0
+      }
+    },
+    {
+      "id": 2,
+      "scene_id": "apples",
+      "status": "ok",
+      "type": "result",
+      "inference_s": 1.3698039940000086,
+      "raw": {
+        "detections": [
+          {
+            "label": "apple",
+            "box": [
+              94.08,
+              162.495,
+              247.68,
+              326.403
+            ]
+          },
+          {
+            "label": "apple",
+            "box": [
+              261.76,
+              173.328,
+              396.16,
+              323.577
+            ]
+          },
+          {
+            "label": "apple",
+            "box": [
+              417.28,
+              183.69,
+              540.8,
+              320.751
+            ]
+          }
+        ]
+      },
+      "detections": [
+        {
+          "label": "apple",
+          "bbox": [
+            0.147,
+            0.34500000000000003,
+            0.387,
+            0.6930000000000001
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        },
+        {
+          "label": "apple",
+          "bbox": [
+            0.409,
+            0.368,
+            0.619,
+            0.6869999999999999
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        },
+        {
+          "label": "apple",
+          "bbox": [
+            0.6519999999999999,
+            0.39,
+            0.845,
+            0.6809999999999999
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        }
+      ],
+      "round_trip_s": 1.3708701000141446,
+      "score": {
+        "correct": 3,
+        "expected": 3,
+        "false_positives": 0
+      }
+    },
+    {
+      "id": 3,
+      "scene_id": "beaker",
+      "status": "ok",
+      "type": "result",
+      "inference_s": 1.3097129899999942,
+      "raw": {
+        "detections": [
+          {
+            "label": "beaker",
+            "box": [
+              114.95,
+              109.44,
+              323.95,
+              439.04
+            ]
+          }
+        ]
+      },
+      "detections": [
+        {
+          "label": "beaker",
+          "bbox": [
+            0.242,
+            0.17099999999999999,
+            0.6819999999999999,
+            0.686
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        }
+      ],
+      "round_trip_s": 1.3110382000159007,
+      "score": {
+        "correct": 1,
+        "expected": 1,
+        "false_positives": 0
+      }
+    },
+    {
+      "id": 4,
+      "scene_id": "apples",
+      "status": "ok",
+      "type": "result",
+      "inference_s": 1.3534928770000079,
+      "raw": {
+        "detections": [
+          {
+            "label": "apple",
+            "box": [
+              94.08,
+              162.495,
+              247.68,
+              326.403
+            ]
+          },
+          {
+            "label": "apple",
+            "box": [
+              261.76,
+              173.328,
+              396.16,
+              323.577
+            ]
+          },
+          {
+            "label": "apple",
+            "box": [
+              417.28,
+              183.69,
+              540.8,
+              320.751
+            ]
+          }
+        ]
+      },
+      "detections": [
+        {
+          "label": "apple",
+          "bbox": [
+            0.147,
+            0.34500000000000003,
+            0.387,
+            0.6930000000000001
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        },
+        {
+          "label": "apple",
+          "bbox": [
+            0.409,
+            0.368,
+            0.619,
+            0.6869999999999999
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        },
+        {
+          "label": "apple",
+          "bbox": [
+            0.6519999999999999,
+            0.39,
+            0.845,
+            0.6809999999999999
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        }
+      ],
+      "round_trip_s": 1.3545447000069544,
+      "score": {
+        "correct": 3,
+        "expected": 3,
+        "false_positives": 0
+      }
+    },
+    {
+      "id": 5,
+      "scene_id": "beaker",
+      "status": "ok",
+      "type": "result",
+      "inference_s": 1.3044962360000056,
+      "raw": {
+        "detections": [
+          {
+            "label": "beaker",
+            "box": [
+              114.95,
+              109.44,
+              323.95,
+              439.04
+            ]
+          }
+        ]
+      },
+      "detections": [
+        {
+          "label": "beaker",
+          "bbox": [
+            0.242,
+            0.17099999999999999,
+            0.6819999999999999,
+            0.686
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        }
+      ],
+      "round_trip_s": 1.3057923000014853,
+      "score": {
+        "correct": 1,
+        "expected": 1,
+        "false_positives": 0
+      }
+    },
+    {
+      "id": 6,
+      "scene_id": "apples",
+      "status": "ok",
+      "type": "result",
+      "inference_s": 1.3346661150000045,
+      "raw": {
+        "detections": [
+          {
+            "label": "apple",
+            "box": [
+              94.08,
+              162.495,
+              247.68,
+              326.403
+            ]
+          },
+          {
+            "label": "apple",
+            "box": [
+              261.76,
+              173.328,
+              396.16,
+              323.577
+            ]
+          },
+          {
+            "label": "apple",
+            "box": [
+              417.28,
+              183.69,
+              540.8,
+              320.751
+            ]
+          }
+        ]
+      },
+      "detections": [
+        {
+          "label": "apple",
+          "bbox": [
+            0.147,
+            0.34500000000000003,
+            0.387,
+            0.6930000000000001
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        },
+        {
+          "label": "apple",
+          "bbox": [
+            0.409,
+            0.368,
+            0.619,
+            0.6869999999999999
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        },
+        {
+          "label": "apple",
+          "bbox": [
+            0.6519999999999999,
+            0.39,
+            0.845,
+            0.6809999999999999
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        }
+      ],
+      "round_trip_s": 1.3359498000063468,
+      "score": {
+        "correct": 3,
+        "expected": 3,
+        "false_positives": 0
+      }
+    },
+    {
+      "id": 7,
+      "scene_id": "beaker",
+      "status": "ok",
+      "type": "result",
+      "inference_s": 1.2897163089999992,
+      "raw": {
+        "detections": [
+          {
+            "label": "beaker",
+            "box": [
+              114.95,
+              109.44,
+              323.95,
+              439.04
+            ]
+          }
+        ]
+      },
+      "detections": [
+        {
+          "label": "beaker",
+          "bbox": [
+            0.242,
+            0.17099999999999999,
+            0.6819999999999999,
+            0.686
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        }
+      ],
+      "round_trip_s": 1.290604899986647,
+      "score": {
+        "correct": 1,
+        "expected": 1,
+        "false_positives": 0
+      }
+    },
+    {
+      "id": 8,
+      "scene_id": "apples",
+      "status": "ok",
+      "type": "result",
+      "inference_s": 1.3627039189999977,
+      "raw": {
+        "detections": [
+          {
+            "label": "apple",
+            "box": [
+              94.08,
+              162.495,
+              247.68,
+              326.403
+            ]
+          },
+          {
+            "label": "apple",
+            "box": [
+              261.76,
+              173.328,
+              396.16,
+              323.577
+            ]
+          },
+          {
+            "label": "apple",
+            "box": [
+              417.28,
+              183.69,
+              540.8,
+              320.751
+            ]
+          }
+        ]
+      },
+      "detections": [
+        {
+          "label": "apple",
+          "bbox": [
+            0.147,
+            0.34500000000000003,
+            0.387,
+            0.6930000000000001
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        },
+        {
+          "label": "apple",
+          "bbox": [
+            0.409,
+            0.368,
+            0.619,
+            0.6869999999999999
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        },
+        {
+          "label": "apple",
+          "bbox": [
+            0.6519999999999999,
+            0.39,
+            0.845,
+            0.6809999999999999
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        }
+      ],
+      "round_trip_s": 1.363918700022623,
+      "score": {
+        "correct": 3,
+        "expected": 3,
+        "false_positives": 0
+      }
+    },
+    {
+      "id": 9,
+      "scene_id": "beaker",
+      "status": "ok",
+      "type": "result",
+      "inference_s": 1.3107394239999905,
+      "raw": {
+        "detections": [
+          {
+            "label": "beaker",
+            "box": [
+              114.95,
+              109.44,
+              323.95,
+              439.04
+            ]
+          }
+        ]
+      },
+      "detections": [
+        {
+          "label": "beaker",
+          "bbox": [
+            0.242,
+            0.17099999999999999,
+            0.6819999999999999,
+            0.686
+          ],
+          "confidence": null,
+          "confidence_source": "not_exposed_by_cpp_api"
+        }
+      ],
+      "round_trip_s": 1.3117247000045609,
+      "score": {
+        "correct": 1,
+        "expected": 1,
+        "false_positives": 0
+      }
+    }
+  ],
+  "input_sha256": {
+    "data/smoke/apples.jpg": "cd34ae9cf55b55b7efa110d454c5445504a7ce41c64e648d3a9928f84595cc44",
+    "data/smoke/test.png": "824fcb3d1bc09b1efcb41ab9c7d25ddd9ef7bd3ef422745298d32b904c9fcb53"
+  },
+  "worker_command": [
+    "wsl",
+    "-d",
+    "Ubuntu",
+    "--",
+    "env",
+    "LA_DEVICE=CUDA0",
+    "python3",
+    "/mnt/c/AuthXD/hackumbc26/benchmarks/locate_anything/worker.py",
+    "--library",
+    "/mnt/c/AuthXD/hackumbc26/benchmarks/locate_anything/build/liblocate_anything.so",
+    "--model",
+    "/home/authxd/models/locate-anything-q6_k.gguf",
+    "--mode",
+    "hybrid"
+  ],
+  "provenance": {
+    "source": "/home/authxd/locate-anything.cpp",
+    "revision": "77376ab332de918220f7a7e391542eefb5407c9f",
+    "source_status": "",
+    "model": "/home/authxd/models/locate-anything-q6_k.gguf",
+    "model_bytes": 5512244960,
+    "model_sha256": "818ba69f0dd886625b7d5889a25b3b1e9a004250251d02e89a038c44d2067c2b",
+    "library_sha256": "995e6e74227616370a09eae6ee350edd96d4208936fa096599cae30952e69b98",
+    "gpu": "name, driver_version, memory.total [MiB]\nNVIDIA GeForce RTX 4060 Laptop GPU, 610.74, 8188 MiB"
+  },
+  "cold_start_s": 9.966834299993934,
+  "ready": {
+    "type": "ready",
+    "load_s": 7.284160607000004,
+    "pid": 342,
+    "model": "/home/authxd/models/locate-anything-q6_k.gguf",
+    "mode": "hybrid",
+    "confidence_available": false
+  },
+  "gpu_peak_mib": 4957.0,
+  "gpu_baseline_mib": 540.0,
+  "gpu_sampling_error": null,
+  "runtime_failure_lines": [],
+  "cuda_confirmed": true,
+  "gate": {
+    "pass": false,
+    "reasons": [
+      "Not a real-tabletop adoption dataset",
+      "Fewer than ten annotated object categories",
+      "Fewer than three distinct saved scenes",
+      "Demo-critical objects lack annotations",
+      "Demo-critical localization below 80% or unmeasured",
+      "Fewer than three distinct image contents"
+    ],
+    "localization_accuracy": null,
+    "median_keyframe_s": 1.3357500999991316,
+    "ten_consecutive_ok": true,
+    "correct": 0,
+    "expected": 0,
+    "false_positives": 0
+  }
+}

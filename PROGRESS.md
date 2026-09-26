@@ -132,3 +132,41 @@ Key decisions:
 - LocateAnything spike begins separately. RTX 4060 Laptop GPU, 8188 MiB VRAM. User already
   has Ubuntu WSL, CUDA-enabled locate-anything.cpp at `77376ab332de918220f7a7e391542eefb5407c9f`
   and `/home/authxd/models/locate-anything-q6_k.gguf`. Real demo-object photos still needed.
+
+### LocateAnything bounded spike (2026-09-26)
+- Added isolated `benchmarks/locate_anything` worker and evaluator. Reuses the user's
+  installed Ubuntu CUDA C++ port and Q6_K model; no new model download or app dependency
+  changes. Linked existing archives into a separate shared library without changing
+  the Ubuntu source/build. Model/runtime hashes saved in `evidence/provenance.json`.
+- Persistent JSONL worker returns normalized labels and xyxy boxes. Confidence is
+  explicitly null because the installed C API exposes none. Startup and inference
+  deadlines, native error-log checks and process cleanup are separate from the app.
+- `evaluate.py` records process-cold startup, per-request inference/round trip, 100ms
+  device-wide GPU memory samples, raw predictions, input hashes and annotated PNGs.
+  Gate requires independent real-tabletop ground truth, >=10 categories across >=3
+  distinct images, >=80% critical-instance recall at exact label + IoU >=0.5,
+  median <3s, and >=10 requests with no crash/OOM/restart. Smoke evidence cannot pass.
+- Final command: `backend/.venv/Scripts/python.exe benchmarks/locate_anything/evaluate.py
+  --manifest benchmarks/locate_anything/smoke.json --output benchmarks/locate_anything/results/final-smoke-640
+  --requests 10 --provenance benchmarks/locate_anything/evidence/provenance.json`.
+  Result: startup 9.967s, median 1.336s, peak 4957 MiB, ten requests completed, CUDA0
+  confirmed, no native failures. **Not adopted**: only two smoke categories/two images.
+- Prior smoke runs: 15.287s/1.378s/4972 MiB and 11.049s/1.401s/4957 MiB,
+  each ten requests. Three apples + foreground beaker localized; manually inspected
+  overlays. This is not accuracy evidence for the proposed demo objects.
+- Real timeout probe: same command with `--output .../timeout-probe --requests 2
+  --timeout 0.05` correctly rejected request 1 and exited; GPU usage returned to 540 MiB.
+- Verification: `backend/.venv/Scripts/python.exe -W error::ResourceWarning -m unittest
+  discover -s benchmarks/locate_anything -p 'test_*.py' -v`: 13 passed, including
+  gate boundaries, duplicate matching, missing data, crashes and timeouts.
+  `npm test`: 68 passed; `npm run typecheck`, `npm run build`, compileall and diff check passed.
+- Live app: isolated Vite :5174/API :8011 browser rehearsal taught red A-to-B,
+  finished early, restored start and reached Procedure complete; ~5fps, no console errors.
+  Post-spike `TEACHBACK_DEMO_URL=ws://127.0.0.1:8011/ws npm run demo:check` passed 3/3
+  while the final GPU benchmark ran. Color detector, simulator and production path unchanged.
+- `LOCATE_ANYTHING_EVAL.md` contains the decision, detector boundary, evidence, limits
+  and conditional integration plan. `benchmarks/locate_anything/README.md` has commands
+  and ground-truth schema; `demo-objects.json` has the user's nine items plus a proposed pen.
+- **Pending input:** saved tabletop photos for at least three arrangements and a tenth
+  object. User supplied object names, not images. Do not implement the production
+  Detector interface/tracking/scheduling until the full adoption gate passes.

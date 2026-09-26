@@ -130,6 +130,10 @@ frontend/src/      React UI (App, StatusCard, Timeline, Overlay, Simulator, spee
 
 See [ARCHITECTURE.md](ARCHITECTURE.md), [DEMO_SCRIPT.md](DEMO_SCRIPT.md), and [PROGRESS.md](PROGRESS.md).
 
+The separate local LocateAnything benchmark is documented in
+[LOCATE_ANYTHING_EVAL.md](LOCATE_ANYTHING_EVAL.md). It has not replaced the color detector;
+adoption is pending accuracy measurements on real demo-object photos.
+
 ## Troubleshooting
 
 - **"Camera unavailable"**: allow camera access in the browser's site settings, and close other apps using the

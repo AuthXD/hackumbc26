@@ -1,0 +1,10 @@
+{
+  "source": "/home/authxd/locate-anything.cpp",
+  "revision": "77376ab332de918220f7a7e391542eefb5407c9f",
+  "source_status": "",
+  "model": "/home/authxd/models/locate-anything-q6_k.gguf",
+  "model_bytes": 5512244960,
+  "model_sha256": "818ba69f0dd886625b7d5889a25b3b1e9a004250251d02e89a038c44d2067c2b",
+  "library_sha256": "995e6e74227616370a09eae6ee350edd96d4208936fa096599cae30952e69b98",
+  "gpu": "name, driver_version, memory.total [MiB]\nNVIDIA GeForce RTX 4060 Laptop GPU, 610.74, 8188 MiB"
+}

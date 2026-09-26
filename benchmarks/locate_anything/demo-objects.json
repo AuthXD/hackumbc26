@@ -1,0 +1,15 @@
+{
+  "purpose": "adoption",
+  "image_kind": "real_tabletop",
+  "labels": [
+    "blue wristband", "blue phone", "black case", "water bottle",
+    "airpods in a black case", "brown wallet", "apple watch with green bands",
+    "gold coin", "black headphones", "pen"
+  ],
+  "demo_critical_labels": [
+    "blue wristband", "blue phone", "black case", "water bottle",
+    "airpods in a black case", "brown wallet", "apple watch with green bands",
+    "gold coin", "black headphones"
+  ],
+  "scenes": []
+}

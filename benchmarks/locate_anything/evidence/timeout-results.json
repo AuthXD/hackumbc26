@@ -1,0 +1,139 @@
+{
+  "recorded_at": "2026-09-26T17:17:42.059096+00:00",
+  "manifest": {
+    "purpose": "runtime_smoke_only",
+    "image_kind": "existing_non_demo_images",
+    "labels": [
+      "apple",
+      "beaker"
+    ],
+    "demo_critical_labels": [],
+    "scenes": [
+      {
+        "id": "apples",
+        "image": "data/smoke/apples.jpg",
+        "objects": [
+          {
+            "label": "apple",
+            "bbox": [
+              0.145,
+              0.342,
+              0.39,
+              0.7
+            ]
+          },
+          {
+            "label": "apple",
+            "bbox": [
+              0.404,
+              0.36,
+              0.622,
+              0.692
+            ]
+          },
+          {
+            "label": "apple",
+            "bbox": [
+              0.648,
+              0.385,
+              0.849,
+              0.688
+            ]
+          }
+        ]
+      },
+      {
+        "id": "beaker",
+        "image": "data/smoke/test.png",
+        "objects": [
+          {
+            "label": "beaker",
+            "bbox": [
+              0.238,
+              0.199,
+              0.659,
+              0.687
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "model": "/home/authxd/models/locate-anything-q6_k.gguf",
+  "mode": "hybrid",
+  "max_edge": 640,
+  "requests": [
+    {
+      "id": 0,
+      "scene_id": "apples",
+      "status": "error"
+    }
+  ],
+  "input_sha256": {
+    "data/smoke/apples.jpg": "cd34ae9cf55b55b7efa110d454c5445504a7ce41c64e648d3a9928f84595cc44",
+    "data/smoke/test.png": "824fcb3d1bc09b1efcb41ab9c7d25ddd9ef7bd3ef422745298d32b904c9fcb53"
+  },
+  "worker_command": [
+    "wsl",
+    "-d",
+    "Ubuntu",
+    "--",
+    "env",
+    "LA_DEVICE=CUDA0",
+    "python3",
+    "/mnt/c/AuthXD/hackumbc26/benchmarks/locate_anything/worker.py",
+    "--library",
+    "/mnt/c/AuthXD/hackumbc26/benchmarks/locate_anything/build/liblocate_anything.so",
+    "--model",
+    "/home/authxd/models/locate-anything-q6_k.gguf",
+    "--mode",
+    "hybrid"
+  ],
+  "provenance": {
+    "source": "/home/authxd/locate-anything.cpp",
+    "revision": "77376ab332de918220f7a7e391542eefb5407c9f",
+    "source_status": "",
+    "model": "/home/authxd/models/locate-anything-q6_k.gguf",
+    "model_bytes": 5512244960,
+    "model_sha256": "818ba69f0dd886625b7d5889a25b3b1e9a004250251d02e89a038c44d2067c2b",
+    "library_sha256": "995e6e74227616370a09eae6ee350edd96d4208936fa096599cae30952e69b98",
+    "gpu": "name, driver_version, memory.total [MiB]\nNVIDIA GeForce RTX 4060 Laptop GPU, 610.74, 8188 MiB"
+  },
+  "cold_start_s": 12.429253899987089,
+  "ready": {
+    "type": "ready",
+    "load_s": 8.484326073,
+    "pid": 326,
+    "model": "/home/authxd/models/locate-anything-q6_k.gguf",
+    "mode": "hybrid",
+    "confidence_available": false
+  },
+  "error": "Worker exceeded 0.05s deadline",
+  "gpu_peak_mib": 4957.0,
+  "gpu_baseline_mib": 540.0,
+  "gpu_sampling_error": null,
+  "runtime_failure_lines": [],
+  "cuda_confirmed": true,
+  "gate": {
+    "pass": false,
+    "reasons": [
+      "Not a real-tabletop adoption dataset",
+      "Fewer than ten annotated object categories",
+      "Fewer than three distinct saved scenes",
+      "Demo-critical objects lack annotations",
+      "Scene apples did not complete",
+      "Scene beaker did not complete",
+      "Demo-critical localization below 80% or unmeasured",
+      "Median stable-keyframe round trip is not under 3 seconds",
+      "Ten consecutive requests without failure not demonstrated",
+      "Fewer than three distinct image contents",
+      "Worker exceeded 0.05s deadline"
+    ],
+    "localization_accuracy": null,
+    "median_keyframe_s": null,
+    "ten_consecutive_ok": false,
+    "correct": 0,
+    "expected": 0,
+    "false_positives": 0
+  }
+}

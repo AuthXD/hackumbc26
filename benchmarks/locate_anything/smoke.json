@@ -1,0 +1,16 @@
+{
+  "purpose": "runtime_smoke_only",
+  "image_kind": "existing_non_demo_images",
+  "labels": ["apple", "beaker"],
+  "demo_critical_labels": [],
+  "scenes": [
+    {"id": "apples", "image": "data/smoke/apples.jpg", "objects": [
+      {"label": "apple", "bbox": [0.145, 0.342, 0.39, 0.7]},
+      {"label": "apple", "bbox": [0.404, 0.36, 0.622, 0.692]},
+      {"label": "apple", "bbox": [0.648, 0.385, 0.849, 0.688]}
+    ]},
+    {"id": "beaker", "image": "data/smoke/test.png", "objects": [
+      {"label": "beaker", "bbox": [0.238, 0.199, 0.659, 0.687]}
+    ]}
+  ]
+}
