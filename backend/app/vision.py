@@ -136,6 +136,30 @@ def assign_zones(objects: list[SceneObject], cfg: VisionConfig) -> None:
         o.zone = base.zone
 
 
+def suppress_static_stacks(scene: SceneState, reference: SceneState | None, cfg: VisionConfig) -> SceneState:
+    """An object that has not moved since the last committed state cannot have *become* stacked.
+
+    In a single 2D image "resting on top of" and "touching from behind" look the same, so a new tower
+    built next to a stationary object could make that object look stacked. Physically, stacking an
+    object requires moving it, so new stack relations on objects that stayed put are dropped.
+    """
+    if reference is None:
+        return scene
+    ref = {o.id: o for o in reference.objects if o.visible}
+    changed = False
+    for o in scene.objects:
+        r = ref.get(o.id)
+        if not o.stacked_on or r is None or r.stacked_on == o.stacked_on:
+            continue
+        moved = abs(o.center[0] - r.center[0]) + abs(o.center[1] - r.center[1])
+        if moved < cfg.static_move_threshold:
+            o.stacked_on = r.stacked_on  # keep whatever relation it had when it last settled
+            changed = True
+    if changed:
+        assign_zones(scene.objects, cfg)
+    return scene
+
+
 class MotionMeter:
     """Percentage of pixels (0-100) whose brightness changed noticeably since the previous frame.
 

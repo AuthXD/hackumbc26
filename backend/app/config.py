@@ -71,6 +71,9 @@ class VisionConfig:
     # within this distance of the lower one's top edge and they share this much width.
     stack_touch_tolerance: float = 0.015
     stack_min_width_overlap: float = 0.6
+    # An object whose center moved less than this (normalized, |dx|+|dy|) since the last committed
+    # state is "static" and cannot newly become stacked.
+    static_move_threshold: float = 0.04
     colors: list[ColorRange] = field(default_factory=default_colors)
     zones: list[Zone] = field(default_factory=default_zones)
 

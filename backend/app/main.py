@@ -1,54 +1,81 @@
 from __future__ import annotations
 
 import asyncio
-import time
+import json
+import logging
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import Response
 
-from .config import settings
-from .vision import MotionMeter, analyze_frame, decode_jpeg, downscale
+from .session import Session
 
+log = logging.getLogger("teachback")
 app = FastAPI(title="TeachBack")
+session = Session()
 
 
-def zones_json() -> list[dict]:
-    return [{"id": z.id, "label": z.label, "x": z.x, "y": z.y, "w": z.w, "h": z.h} for z in settings.vision.zones]
+class Hub:
+    """Connected browser tabs. The newest tab is the active camera; every tab receives updates."""
+
+    def __init__(self) -> None:
+        self.clients: list[WebSocket] = []
+
+    @property
+    def active(self) -> WebSocket | None:
+        return self.clients[-1] if self.clients else None
+
+    async def broadcast(self, payload: dict) -> None:
+        for ws in list(self.clients):
+            try:
+                await ws.send_json({**payload, "active": ws is self.active})
+            except Exception:
+                self.drop(ws)
+
+    def drop(self, ws: WebSocket) -> None:
+        if ws in self.clients:
+            self.clients.remove(ws)
+
+
+hub = Hub()
 
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"ok": True}
+    return {"ok": True, "mode": session.mode}
+
+
+@app.get("/api/keyframes/{key}.jpg")
+def keyframe(key: str) -> Response:
+    data = session.keyframe(key)
+    if data is None:
+        raise HTTPException(404)
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
 
 
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
     await ws.accept()
-    meter = MotionMeter()
+    hub.clients.append(ws)
+    await hub.broadcast(session.snapshot())
     try:
         while True:
             msg = await ws.receive()
             if msg.get("type") == "websocket.disconnect":
                 break
-            data = msg.get("bytes")
-            if not data:
-                continue
-            t0 = time.perf_counter()
-            frame = await asyncio.to_thread(decode_jpeg, data)
-            if frame is None:
-                await ws.send_json({"type": "update", "error": "bad frame"})
-                continue
-            now = time.time()
-            small = downscale(frame, settings.vision.process_width)
-            scene = await asyncio.to_thread(analyze_frame, small, settings.vision, now)
-            motion = meter.update(small)
-            await ws.send_json(
-                {
-                    "type": "update",
-                    "scene": scene.to_json(),
-                    "zones": zones_json(),
-                    "tracker": {"motion": round(motion, 2)},
-                    "frameMs": round((time.perf_counter() - t0) * 1000, 1),
-                }
-            )
+            if msg.get("bytes"):
+                if ws is not hub.active:
+                    continue  # another tab owns the camera; this tab just watches
+                snap = await asyncio.to_thread(session.process_frame, msg["bytes"])
+                await hub.broadcast(snap)
+            elif msg.get("text"):
+                try:
+                    cmd = json.loads(msg["text"])
+                except json.JSONDecodeError:
+                    continue
+                if cmd.get("type") == "command":
+                    snap = await asyncio.to_thread(session.command, str(cmd.get("action", "")))
+                    await hub.broadcast(snap)
     except WebSocketDisconnect:
         pass
+    finally:
+        hub.drop(ws)

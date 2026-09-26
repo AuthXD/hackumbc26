@@ -40,3 +40,22 @@ Key decisions:
   angled stack, adjacent-not-stacked, skin/speck rejection, motion meter). In the browser pane (sim source) dragging red
   to B and yellow onto red produced `yellow on red · B`; frame processing ~8–9 ms.
 - Gotcha: writing files with `cat >` while Vite runs on Windows can cache an empty module; use atomic writes.
+
+### Milestones 3 + 4 — stable states, Teach, Practice (done)
+- `stability.py`: commits an arrangement only when all tracked objects are visible, motion < threshold, unchanged
+  ≥700 ms and ≥3 frames, and different from the last commit. Hands → `moving`; hidden object → `occluded`.
+- `engine.py`: `TeachRecorder` (initial layout → 4 `StepDelta`s, refines initial if an object was hidden, explicit
+  `undo_last`) and `PracticeEngine` (setup check → per-step postcondition check; errors: `skipped_step`,
+  `out_of_order`, `wrong_object`, `wrong_placement`, `extra_change`; never advances after an error; undo → back on track).
+- `describe.py`: deterministic wording ("Move the red object from Zone A to Zone B.", stacking, unstacking, carrying).
+- `session.py`: modes, keyframes (served at `/api/keyframes/*.jpg`), local JSON persistence in `backend/data/`.
+- `vision.suppress_static_stacks`: an object that hasn't moved since the last commit can't *become* stacked
+  (fixes a new tower "stacking" the stationary object it touches — found in the browser run).
+- Design change found by randomized tests: returning an object to where it was is a legitimate step, so teacher
+  undo is an explicit button, not inferred.
+- Verified: `npm test` → 59 passed (engine: correct run, skipped, out-of-order, wrong object, wrong zone,
+  duplicate, occlusion, undo-then-continue, strict no-advance, reset + new procedure, 25 random judge orders;
+  session E2E with real JPEG frames and a simulated hand). Browser (simulator): taught red→B, blue→C, yellow on blue,
+  green→B; practice caught "Skipped step 2" with fix hint, undo → "Back on track", finished → "Procedure complete".
+- Perf fix: `canvas.toBlob` measured 500–1000 ms in Chromium → switched to sync `toDataURL`; steady 5.0 fps.
+- Ops: uvicorn `--reload` hangs on Windows with open websockets → `npm run dev` runs without reload; `npm run stop` frees ports.

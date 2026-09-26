@@ -28,7 +28,7 @@ export type LearnedStep = {
   aiDescription: StepText | null;
 };
 
-export type Procedure = { trackedIds: string[]; steps: LearnedStep[]; initialState: SceneState };
+export type Procedure = { trackedIds: string[]; steps: LearnedStep[] };
 
 export type PracticeStatus = "setup" | "waiting" | "step_complete" | "error" | "complete";
 
@@ -59,6 +59,7 @@ export type TeachState = {
   stepsRecorded: number;
   target: number;
   message: string;
+  trackedIds: string[];
 };
 
 export type SpeakEvent = { kind: "speak"; text: string; priority: "info" | "success" | "error" };
@@ -66,9 +67,9 @@ export type SpeakEvent = { kind: "speak"; text: string; priority: "info" | "succ
 export type ServerUpdate = {
   type: "update";
   mode?: Mode;
-  scene?: SceneState;
+  scene?: SceneState | null;
   zones?: Zone[];
-  tracker?: Tracker;
+  tracker?: Tracker | null;
   teach?: TeachState | null;
   procedure?: Procedure | null;
   practice?: PracticeState | null;
@@ -76,5 +77,7 @@ export type ServerUpdate = {
   frameMs?: number;
   colors?: Record<string, string>;
   integrations?: { gemini: boolean; elevenlabs: boolean };
+  notice?: string;
+  active?: boolean;
   error?: string;
 };

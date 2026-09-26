@@ -14,6 +14,13 @@ export type Connection = "connecting" | "open" | "closed";
  */
 export type FrameSource = HTMLVideoElement | HTMLCanvasElement;
 
+function dataUrlToBytes(url: string): Uint8Array<ArrayBuffer> {
+  const bin = atob(url.slice(url.indexOf(",") + 1));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
 function sourceSize(src: FrameSource): [number, number] {
   return src instanceof HTMLVideoElement ? [src.videoWidth, src.videoHeight] : [src.width, src.height];
 }
@@ -98,17 +105,9 @@ export function useFrameStream<T>(
         ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
         inFlightSince = now;
         lastSent = now;
-        canvas.toBlob(
-          (blob) => {
-            if (!blob || sock.readyState !== WebSocket.OPEN) {
-              inFlightSince = 0;
-              return;
-            }
-            blob.arrayBuffer().then((buf) => sock.send(buf));
-          },
-          "image/jpeg",
-          JPEG_QUALITY,
-        );
+        // Synchronous encode on purpose: Chromium runs async canvas.toBlob at idle priority and it
+        // was measured taking 500–1000 ms, which starved the 5 fps stream. toDataURL takes a few ms.
+        sock.send(dataUrlToBytes(canvas.toDataURL("image/jpeg", JPEG_QUALITY)));
       }
       window.setTimeout(tick, 20);
     };

@@ -1,5 +1,6 @@
 from app.config import VisionConfig
-from app.vision import MotionMeter, detect_objects
+from app.models import SceneState
+from app.vision import MotionMeter, detect_objects, suppress_static_stacks
 
 from .synthetic import SKIN, as_jpeg_roundtrip, blank, draw_block, zone_center
 
@@ -74,3 +75,22 @@ def test_motion_meter_is_low_for_still_frames_and_high_for_moving_hand():
     moved = img.copy()
     draw_block(moved, "red", zone_center("B", 0), half=80, bgr=SKIN)
     assert meter.update(moved) > 1.5
+
+
+def test_new_tower_touching_a_stationary_object_does_not_stack_it():
+    cfg = VisionConfig()
+    x, y = zone_center("A", 2)
+    before = blank()
+    draw_block(before, "green", (x, y - 70), half=28)
+    draw_block(before, "blue", (x, y + 40), half=28)
+    draw_block(before, "yellow", zone_center("B", 1), half=28)
+    ref = SceneState(objects=detect_objects(before, cfg))
+    after = blank()
+    draw_block(after, "green", (x, y - 70), half=28)  # did not move
+    draw_block(after, "blue", (x, y + 40), half=28)
+    draw_block(after, "yellow", (x, y - 5), half=28)  # stacked on blue; its top now touches green
+    raw = {o.id: o for o in detect_objects(after, cfg)}
+    assert raw["green"].stacked_on == "yellow"  # the 2D ambiguity this filter exists for
+    fixed = {o.id: o for o in suppress_static_stacks(SceneState(objects=list(raw.values())), ref, cfg).objects}
+    assert fixed["green"].stacked_on is None and fixed["green"].zone == "A"
+    assert fixed["yellow"].stacked_on == "blue"

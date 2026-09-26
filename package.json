@@ -6,11 +6,13 @@
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "dev": "concurrently -k -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:api": "node scripts/py.mjs -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload",
+    "dev:api": "node scripts/py.mjs -m uvicorn app.main:app --host 127.0.0.1 --port 8000",
     "dev:web": "npm --prefix frontend run dev",
     "test": "node scripts/py.mjs -m pytest -q",
     "typecheck": "npm --prefix frontend run typecheck",
-    "build": "npm --prefix frontend run build"
+    "build": "npm --prefix frontend run build",
+    "dev:api:reload": "node scripts/py.mjs -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload",
+    "stop": "node scripts/stop.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"

@@ -32,6 +32,7 @@ export const Simulator = forwardRef<SimulatorHandle, { zones: Zone[] }>(function
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const blocks = useRef<Block[]>([]);
   const drag = useRef<{ id: string; dx: number; dy: number } | null>(null);
+  const drawRef = useRef<() => void>(() => undefined);
 
   useImperativeHandle(ref, () => ({ get canvas() { return canvasRef.current; } }), []);
 
@@ -40,7 +41,6 @@ export const Simulator = forwardRef<SimulatorHandle, { zones: Zone[] }>(function
   }, [zones]);
 
   useEffect(() => {
-    let raf = 0;
     const draw = () => {
       const ctx = canvasRef.current?.getContext("2d");
       if (ctx) {
@@ -66,10 +66,12 @@ export const Simulator = forwardRef<SimulatorHandle, { zones: Zone[] }>(function
           ctx.fill();
         }
       }
-      raf = requestAnimationFrame(draw);
     };
+    drawRef.current = draw;
     draw();
-    return () => cancelAnimationFrame(raf);
+    // A timer (not requestAnimationFrame) keeps the canvas current even when the tab isn't painting.
+    const id = window.setInterval(draw, 50);
+    return () => window.clearInterval(id);
   }, [zones]);
 
   const toCanvas = (e: React.PointerEvent) => {
@@ -95,6 +97,7 @@ export const Simulator = forwardRef<SimulatorHandle, { zones: Zone[] }>(function
     const b = blocks.current.find((o) => o.id === d.id)!;
     b.x = p.x - d.dx;
     b.y = p.y - d.dy;
+    drawRef.current();
   };
 
   const onUp = () => {
@@ -115,6 +118,7 @@ export const Simulator = forwardRef<SimulatorHandle, { zones: Zone[] }>(function
       b.x = target.x;
       b.y = target.y - SIZE * 0.78;
     }
+    drawRef.current();
   };
 
   return (
