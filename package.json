@@ -1,0 +1,18 @@
+{
+  "name": "teachback",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TeachBack: learn a physical procedure from one demonstration, then coach the next person.",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "concurrently -k -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "node scripts/py.mjs -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload",
+    "dev:web": "npm --prefix frontend run dev",
+    "test": "node scripts/py.mjs -m pytest -q",
+    "typecheck": "npm --prefix frontend run typecheck",
+    "build": "npm --prefix frontend run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

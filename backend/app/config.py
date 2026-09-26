@@ -1,0 +1,104 @@
+"""All tunable thresholds live here so the demo can be adjusted on-site in one place.
+
+Coordinates are normalized to the camera frame: (0, 0) is top-left, (1, 1) is bottom-right.
+Hue follows OpenCV's convention (0-179).
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+DATA_DIR = BACKEND_ROOT / "data"
+
+load_dotenv(REPO_ROOT / ".env")
+
+
+@dataclass
+class ColorRange:
+    """One or more HSV (lower, upper) bands that together define a color. Red wraps around hue 0."""
+
+    name: str
+    bands: list[tuple[tuple[int, int, int], tuple[int, int, int]]]
+    display: str  # CSS color used for overlays in the UI
+
+
+@dataclass
+class Zone:
+    id: str
+    label: str
+    x: float
+    y: float
+    w: float
+    h: float
+
+    def contains(self, px: float, py: float) -> bool:
+        return self.x <= px <= self.x + self.w and self.y <= py <= self.y + self.h
+
+
+def default_colors() -> list[ColorRange]:
+    return [
+        ColorRange("red", [((0, 120, 70), (8, 255, 255)), ((168, 120, 70), (179, 255, 255))], "#ef4444"),
+        ColorRange("yellow", [((18, 110, 110), (34, 255, 255))], "#facc15"),
+        ColorRange("green", [((38, 70, 45), (85, 255, 255))], "#22c55e"),
+        ColorRange("blue", [((92, 110, 45), (130, 255, 255))], "#3b82f6"),
+    ]
+
+
+def default_zones() -> list[Zone]:
+    # Three side-by-side columns with gaps, so an object is rarely ambiguous between zones.
+    return [
+        Zone("A", "Zone A", 0.03, 0.12, 0.29, 0.80),
+        Zone("B", "Zone B", 0.355, 0.12, 0.29, 0.80),
+        Zone("C", "Zone C", 0.68, 0.12, 0.29, 0.80),
+    ]
+
+
+@dataclass
+class VisionConfig:
+    process_width: int = 320  # frames are downscaled to this width before segmentation
+    min_area_frac: float = 0.002  # smallest blob (fraction of frame) that counts as an object
+    blur_kernel: int = 5
+    morph_kernel: int = 5
+    # Stacking: two boxes overlap by at least this fraction of the smaller box.
+    stack_overlap_ratio: float = 0.30
+    colors: list[ColorRange] = field(default_factory=default_colors)
+    zones: list[Zone] = field(default_factory=default_zones)
+
+
+@dataclass
+class StabilityConfig:
+    stable_ms: float = 700.0  # arrangement must stay unchanged this long
+    min_frames: int = 3  # ...and across at least this many frames
+    # Mean absolute grayscale difference between consecutive frames (0-255 scale).
+    # Above this the scene is considered "moving" (a hand is working) and nothing is committed.
+    motion_threshold: float = 6.0
+    motion_gate_enabled: bool = True
+
+
+@dataclass
+class ProcedureConfig:
+    steps_per_procedure: int = 4
+    min_objects: int = 2  # objects that must be visible to capture a starting layout
+
+
+@dataclass
+class Settings:
+    vision: VisionConfig = field(default_factory=VisionConfig)
+    stability: StabilityConfig = field(default_factory=StabilityConfig)
+    procedure: ProcedureConfig = field(default_factory=ProcedureConfig)
+    gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", "").strip())
+    gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip())
+    elevenlabs_api_key: str = field(default_factory=lambda: os.getenv("ELEVENLABS_API_KEY", "").strip())
+    elevenlabs_voice_id: str = field(
+        default_factory=lambda: os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM").strip()
+    )
+    elevenlabs_model: str = field(default_factory=lambda: os.getenv("ELEVENLABS_MODEL", "eleven_turbo_v2_5").strip())
+
+
+settings = Settings()
