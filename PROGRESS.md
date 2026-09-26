@@ -113,3 +113,22 @@ Key decisions:
 1. Real-webcam rehearsal with the physical objects under venue lighting; tune `motion_threshold` / calibrate.
 2. Add `GEMINI_API_KEY` / `ELEVENLABS_API_KEY` to `.env` and confirm AI step titles + voice live.
 3. Optional: HTTPS dev server for the iPhone camera path.
+
+### Takeover baseline (2026-09-26)
+- Inspected README, architecture, demo script, package scripts, history and camera/stream,
+  detector, SceneState, stability, teaching/practice, persistence and both integrations.
+- Started from clean `ca08776`. Color detector and simulator remain unchanged.
+- `npm test`: 68 passed; pytest cache write warning only. `npm run typecheck` and
+  `npm run build`: passed. This shell needs `$env:NPM_CONFIG_PREFIX='C:\Program Files\nodejs'`
+  to avoid the broken roaming npm launcher; no global npm configuration was changed.
+- Added `TEACHBACK_DEMO_URL` override to the demo checker, retaining its default URL.
+  Port 8000 was already occupied. Ran a separate server on 8011 with
+  `TEACHBACK_DATA_DIR=C:\AuthXD\hackumbc26\backend\data\baseline-spike`, then
+  `$env:TEACHBACK_DEMO_URL='ws://127.0.0.1:8011/ws'; npm run demo:check`: all 3 runs passed,
+  including error detection, no premature advance, recovery and completion.
+- Detector boundary: `Session.process_frame` calls `vision.analyze_frame`, which wraps
+  `detect_objects` into `SceneState`; detection also infers stacking and zones. Motion and
+  arrangement stability follow detection. Object IDs currently equal color names.
+- LocateAnything spike begins separately. RTX 4060 Laptop GPU, 8188 MiB VRAM. User already
+  has Ubuntu WSL, CUDA-enabled locate-anything.cpp at `77376ab332de918220f7a7e391542eefb5407c9f`
+  and `/home/authxd/models/locate-anything-q6_k.gguf`. Real demo-object photos still needed.

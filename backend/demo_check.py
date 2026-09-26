@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 
 import cv2
@@ -16,7 +17,7 @@ import websockets
 
 from tests.synthetic import SKIN, blank, draw_block, zone_center
 
-URL = "ws://127.0.0.1:8000/ws"
+URL = os.getenv("TEACHBACK_DEMO_URL", "ws://127.0.0.1:8000/ws")
 SLOT = {"red": 0, "blue": 1, "yellow": 2, "green": 3}
 FPS = 5
 
