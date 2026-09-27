@@ -42,6 +42,111 @@ const slideIndices = [0, 1, 2] as const;
 const nextSlide: Record<SlideIndex, SlideIndex> = { 0: 1, 1: 2, 2: 0 };
 const previousSlide: Record<SlideIndex, SlideIndex> = { 0: 2, 1: 0, 2: 1 };
 
+type SimulationItem = {
+  id: string;
+  label: string;
+  destination: string;
+};
+
+type SimulationSpec = {
+  index: string;
+  eyebrow: string;
+  title: string;
+  note: string;
+  items: readonly SimulationItem[];
+};
+
+const simulations: readonly SimulationSpec[] = [
+  {
+    index: "SIM / 01",
+    eyebrow: "Toolbox handoff",
+    title: "Return every tool in the learned order",
+    note: "A skipped or out-of-order tool pauses the handoff until the correct action is taken.",
+    items: [
+      { id: "driver", label: "Screwdriver", destination: "Upper rack" },
+      { id: "pliers", label: "Pliers", destination: "Center slot" },
+      { id: "tape", label: "Tape measure", destination: "Lower drawer" },
+    ],
+  },
+  {
+    index: "SIM / 02",
+    eyebrow: "Clinical training tray",
+    title: "Practice a simulated tray-preparation sequence",
+    note: "Training demonstration only. TeachBack does not provide medical judgment or certify sterility.",
+    items: [
+      { id: "sanitizer", label: "Hand sanitizer", destination: "Prep area" },
+      { id: "gloves", label: "Training gloves", destination: "Left tray" },
+      { id: "gauze", label: "Gauze pack", destination: "Right tray" },
+    ],
+  },
+];
+
+function WorkflowSimulation({ spec }: { spec: SimulationSpec }) {
+  const [completed, setCompleted] = useState<string[]>([]);
+  const [mistake, setMistake] = useState("");
+  const next = spec.items[completed.length];
+  const finished = completed.length === spec.items.length;
+
+  function choose(item: SimulationItem) {
+    if (finished || completed.includes(item.id)) return;
+    if (item.id !== next?.id) {
+      setMistake(`Out of order: ${item.label}. Step ${completed.length + 1} expects ${next?.label}.`);
+      return;
+    }
+    setCompleted((current) => [...current, item.id]);
+    setMistake("");
+  }
+
+  function reset() {
+    setCompleted([]);
+    setMistake("");
+  }
+
+  return (
+    <article className="simulation">
+      <header className="simulation-head">
+        <p className="kicker">{spec.index} · {spec.eyebrow}</p>
+        <h3>{spec.title}</h3>
+        <p>{spec.note}</p>
+      </header>
+      <div className="simulation-console">
+        <div className="simulation-objects" aria-label={`${spec.eyebrow} objects`}>
+          <p className="console-label">Objects in view / choose the next action</p>
+          {spec.items.map((item, index) => {
+            const done = completed.includes(item.id);
+            return (
+              <button
+                type="button"
+                className={done ? "object-action done" : "object-action"}
+                disabled={done || finished}
+                onClick={() => choose(item)}
+                key={item.id}
+              >
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <strong>{item.label}</strong>
+                <small>{done ? `Stored · ${item.destination}` : `Move to ${item.destination}`}</small>
+              </button>
+            );
+          })}
+        </div>
+        <div className={mistake ? "simulation-readout error" : finished ? "simulation-readout complete" : "simulation-readout"} aria-live="polite">
+          <p className="console-label">TeachBack / live result</p>
+          <strong>{mistake ? "Mistake caught" : finished ? "Procedure complete" : `Step ${completed.length + 1} of ${spec.items.length}`}</strong>
+          <p>{mistake || (finished ? "Every action matched the demonstrated order." : `Next: move ${next?.label} to ${next?.destination}.`)}</p>
+          <ol>
+            {spec.items.map((item, index) => (
+              <li className={completed.includes(item.id) ? "done" : index === completed.length ? "current" : ""} key={item.id}>
+                <span>{String(index + 1).padStart(2, "0")}</span> {item.label} → {item.destination}
+              </li>
+            ))}
+          </ol>
+          <button type="button" className="reset-simulation" onClick={reset}>Reset simulation</button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function Mark() {
   return (
     <span className="mark" aria-hidden="true">
@@ -116,7 +221,7 @@ export function App() {
           </a>
           <nav aria-label="Page">
             <a href="#how">How it works</a>
-            <a href="#uses">Use cases</a>
+            <a href="#uses">Try simulations</a>
             {githubUrl && <a href={githubUrl}>GitHub</a>}
             <a className="open-app" href={localAppUrl} target="_blank" rel="noreferrer">Open local app <span aria-hidden="true">↗</span></a>
           </nav>
@@ -232,20 +337,12 @@ export function App() {
         </section>
 
         <section className="uses" id="uses" aria-labelledby="uses-title" data-reveal>
-          <h2 id="uses-title">One engine. Different procedures.</h2>
-          <p className="uses-note">Both are the same learned sequence. Neither is a separate mode.</p>
-          <article>
-            <p className="kicker">Toolbox handoff / 01</p>
-            <p>
-              Teach a repeatable shutdown, inspection, or tool-return procedure. Catch skipped steps,
-              incorrect tools, and actions performed out of order.
-            </p>
-          </article>
-          <article>
-            <p className="kicker">Clinical training tray / 02</p>
-            <p>Teach students a simulated tray-preparation sequence and coach them through the learned order.</p>
-            <p className="disclaimer">TeachBack supports training. It does not provide medical judgment or certify sterility.</p>
-          </article>
+          <div className="uses-intro">
+            <p className="kicker">Interactive proof / no camera required</p>
+            <h2 id="uses-title">Try two learned procedures.</h2>
+            <p className="uses-note">Choose the actions in order—or deliberately choose the wrong one and watch TeachBack stop the sequence.</p>
+          </div>
+          {simulations.map((spec) => <WorkflowSimulation spec={spec} key={spec.index} />)}
         </section>
 
         <section className="trust" aria-labelledby="trust-title" data-reveal>
