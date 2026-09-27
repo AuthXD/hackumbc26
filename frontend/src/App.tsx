@@ -36,11 +36,11 @@ export default function App() {
   const [source, setSource] = useState<Source>(() =>
     new URLSearchParams(location.search).has("sim") ? "sim" : "camera",
   );
-  const { videoRef, ready, error } = useCamera(PHONE_MODE ? "environment" : undefined);
+  const [demoMode, setDemoMode] = useState(() => new URLSearchParams(location.search).get("demo") === "1");
+  const { videoRef, ready, error } = useCamera(PHONE_MODE ? "environment" : undefined, !demoMode);
   const simRef = useRef<SimulatorHandle>(null);
   const [u, setU] = useState<ServerUpdate | null>(null);
   const [muted, setMuted] = useState(false);
-  const [demoMode, setDemoMode] = useState(() => new URLSearchParams(location.search).get("demo") === "1");
   const [aspect, setAspect] = useState(4 / 3);
   const [fps, setFps] = useState(0);
   const [remoteFrame, setRemoteFrame] = useState<string | null>(null);
