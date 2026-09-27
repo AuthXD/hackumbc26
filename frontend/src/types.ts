@@ -77,9 +77,40 @@ export type TeachState = {
 
 export type SpeakEvent = { kind: "speak"; text: string; priority: "info" | "success" | "error" };
 
+export type Workspace = "procedure" | "setup";
+
+export type SetupObject = { label: string; zone: string | null };
+
+export type SavedSetup = { id: string; name: string; objects: SetupObject[]; createdAt: number };
+
+export type SetupCheckResult = {
+  setupId: string;
+  setupName: string;
+  status: "complete" | "needs_attention";
+  correct: SetupObject[];
+  missing: SetupObject[];
+  unexpected: SetupObject[];
+  misplaced: { label: string; expectedZone: string | null; observedZone: string | null }[];
+  checkedAt: number;
+};
+
+export type SetupState = {
+  available: boolean;
+  setups: { id: string; name: string; objectCount: number }[];
+  selected: SavedSetup | null;
+  canCapture: boolean;
+  canCheck: boolean;
+  checking: boolean;
+  result: SetupCheckResult | null;
+  resultStale: boolean;
+  repositoryErrors: string[];
+};
+
 export type ServerUpdate = {
   type: "update";
   mode?: Mode;
+  workspace?: Workspace;
+  setup?: SetupState;
   detector?: DetectorState;
   scene?: SceneState | null;
   zones?: Zone[];

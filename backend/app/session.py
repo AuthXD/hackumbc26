@@ -12,6 +12,7 @@ from .config import DATA_DIR, ColorRange, Settings, default_colors, settings
 from .engine import Event, PracticeEngine, TeachRecorder, speak
 from .detectors import ColorDetector, DEFAULT_LABELS, LatestScan, LocateAnythingDetector, parse_labels
 from .models import Procedure, SceneState, StepText
+from .setups import JsonSetupRepository, SavedSetup, SetupCheckResult, SetupRepository, check_setup
 from .stability import StabilityTracker, TrackerResult
 from .vision import (
     MotionMeter,
@@ -27,10 +28,14 @@ Mode = Literal["idle", "teaching", "practicing"]
 PROCEDURE_FILE = DATA_DIR / "procedure.json"
 KEYFRAME_DIR = DATA_DIR / "keyframes"
 CALIBRATION_FILE = DATA_DIR / "calibration.json"
+SETUP_DIR = DATA_DIR / "setups"  # kept apart from procedure.json so Setup Check can never touch it
+
+PROCEDURE_ACTIONS = ("teach", "finish", "undo_step", "practice", "reset", "pause")
 
 
 class Session:
-    def __init__(self, cfg: Settings = settings, persist: bool = True) -> None:
+    def __init__(self, cfg: Settings = settings, persist: bool = True,
+                 setup_repository: SetupRepository | None = None) -> None:
         self.cfg = cfg
         self.persist = persist
         self.lock = threading.RLock()
@@ -59,6 +64,13 @@ class Session:
         self.last_capture = 0.0
         self.still_since: float | None = None
         self.still_frames = 0
+        self.workspace: Literal["procedure", "setup"] = "procedure"
+        self.setups: SetupRepository = setup_repository or JsonSetupRepository(SETUP_DIR)
+        self.selected_setup_id: str | None = None
+        self.setup_result: SetupCheckResult | None = None
+        self.setup_result_stale = False  # the table moved after the last check
+        self.pending_check: str | None = None  # setup id a submitted check scan belongs to
+        self.last_scan_purpose: str | None = None
         if persist:
             self._load()
             self._load_calibration()
@@ -99,6 +111,9 @@ class Session:
 
     def _invalidate_scan(self, message="Scene changed. Hold still and press Scan Objects."):
         self.scanner.invalidate()
+        self.pending_check = None
+        if self.setup_result is not None:
+            self.setup_result_stale = True
         self.last_scene = None
         self.scan_status, self.scan_message = "idle", message
 
@@ -125,6 +140,8 @@ class Session:
         if drift.update(frame) > self.cfg.stability.motion_threshold:
             self._invalidate_scan("Table changed during the scan. Hold still and scan again.")
             return []
+        if result.request.purpose == "setup_check":
+            return self._finish_setup_check(result)
         if result.scene is None:
             self.last_scene = None
             self.scan_status = "ambiguous" if result.ambiguous else "error"
@@ -132,6 +149,7 @@ class Session:
             return []
         self.last_scene = self.reference_scene = result.scene
         self.scan_status = "valid"
+        self.last_scan_purpose = "procedure"
         self.scan_message = "Scan accepted. After each move, hold still and press Scan Objects."
         return self._on_stable(result.scene, result.request.jpeg)
 
@@ -140,6 +158,8 @@ class Session:
             try:
                 if kind not in ("color", "semantic"):
                     raise ValueError("Unknown detector mode.")
+                if kind == "color" and self.workspace == "setup":
+                    raise ValueError("Setup Check uses semantic scans. Switch to Procedure mode before selecting Color.")
                 if self.mode != "idle":
                     raise ValueError("Pause the current procedure before switching detectors or object descriptions.")
                 if kind == "semantic":
@@ -167,6 +187,7 @@ class Session:
             self.notice = "Hold the table still before scanning."
         else:
             self.last_scene = None
+            self.pending_check = None
             self.scanner.submit(self.last_full_frame, self.last_jpeg, self.semantic_labels, self.last_capture)
             self.scan_status, self.scan_message = "scanning", "Scanning objects. Keep the table still."
             self.notice = ""
@@ -219,6 +240,9 @@ class Session:
 
     def command(self, action: str) -> dict:
         with self.lock:
+            if self.workspace == "setup" and action in PROCEDURE_ACTIONS:
+                self.notice = "Switch to Procedure mode to use procedure controls."
+                return self.snapshot()
             handler = {
                 "teach": self._cmd_teach,
                 "finish": self._cmd_finish,
@@ -279,6 +303,131 @@ class Session:
         self.tracker.reset()
         self.notice = "Reset. Ready to teach a new procedure."
         return []
+
+    # -- Setup Check ----------------------------------------------------------------------------
+
+    def set_workspace(self, workspace: str) -> dict:
+        with self.lock:
+            if workspace not in ("procedure", "setup") or workspace == self.workspace:
+                return self.snapshot()
+            if self.mode != "idle":
+                self.notice = "Pause or finish the procedure before switching to Setup Check."
+                return self.snapshot()
+            if workspace == "setup":
+                if not self.cfg.semantic_beta:
+                    self.notice = "Setup Check needs the Semantic Objects beta (TEACHBACK_SEMANTIC_BETA=1)."
+                    return self.snapshot()
+                if self.detector_kind != "semantic":
+                    self.configure_detector("semantic", ",".join(self.semantic_labels))
+                    if self.detector_kind != "semantic":
+                        return self.snapshot()
+            self.workspace = workspace
+            self._clear_setup_result()
+            self._invalidate_scan("Hold the table still, then press Scan Objects.")
+            self.notice = ("Setup Check: scan the organized table and capture it, or pick a saved setup and check it."
+                           if workspace == "setup" else "Procedure mode. The saved procedure is unchanged.")
+            return self.snapshot()
+
+    def capture_setup(self, name: str) -> dict:
+        with self.lock:
+            if not self._can_capture():
+                self.notice = "Scan Objects first: capture needs an accepted scan of every described object."
+                return self.snapshot()
+            try:
+                setup = SavedSetup.from_scene(name, self.last_scene, time.time())
+                self.setups.save(setup)
+            except (ValueError, OSError) as exc:  # pydantic's ValidationError is a ValueError
+                self.notice = f"Setup not saved: {str(exc).splitlines()[0]}"
+                return self.snapshot()
+            self.selected_setup_id = setup.id
+            self._clear_setup_result()
+            self.notice = f'Saved setup "{setup.name}" with {len(setup.objects)} objects.'
+            return self.snapshot()
+
+    def select_setup(self, setup_id: str) -> dict:
+        with self.lock:
+            if self.setups.get(setup_id) is None:
+                self.notice = "That saved setup is not available."
+            else:
+                self.selected_setup_id = setup_id
+                self._clear_setup_result()
+                self.pending_check = None
+                self.notice = ""
+            return self.snapshot()
+
+    def check_setup(self) -> dict:
+        with self.lock:
+            setup = self.setups.get(self.selected_setup_id or "")
+            if self.workspace != "setup" or self.detector_kind != "semantic":
+                self.notice = "Switch to Setup Check first."
+            elif setup is None:
+                self.notice = "Select a saved setup to check."
+            elif not self._can_scan():
+                self.notice = "Hold the table still before checking."
+            else:
+                expected = [o.label for o in setup.objects]
+                known = {label.casefold() for label in expected}
+                # Also look for the other configured descriptions: that is how unexpected objects are found.
+                vocabulary = tuple(expected + [label for label in self.semantic_labels if label.casefold() not in known])
+                if len(vocabulary) > 6:
+                    self.notice = "Too many descriptions to scan at once (max 6 including the setup's objects)."
+                    return self.snapshot()
+                self._clear_setup_result()
+                self.last_scene = None
+                self.pending_check = setup.id
+                self.scanner.submit(self.last_full_frame, self.last_jpeg, vocabulary, self.last_capture,
+                                    purpose="setup_check")
+                self.scan_status, self.scan_message = "scanning", f'Checking "{setup.name}". Keep the table still.'
+                self.notice = ""
+            return self.snapshot()
+
+    def _finish_setup_check(self, result) -> list[Event]:
+        setup_id, self.pending_check = self.pending_check, None
+        setup = self.setups.get(setup_id or "")
+        if result.scene is None:
+            # A failed or ambiguous scan never yields a verdict, least of all a passing one.
+            self.scan_status = "ambiguous" if result.ambiguous else "error"
+            self.scan_message = f"Setup not checked: {result.error}"
+            return []
+        requested = {label.casefold() for label in result.request.labels}
+        expected = {o.label.casefold() for o in setup.objects} if setup else set()
+        if setup is None or setup_id != self.selected_setup_id or not expected <= requested:
+            self.scan_status, self.scan_message = "idle", "The selected setup changed. Press Check Setup again."
+            return []
+        self.setup_result = check_setup(setup, result.scene, result.scene.captured_at)
+        self.setup_result_stale = False
+        self.last_scene = result.scene
+        self.scan_status, self.last_scan_purpose = "valid", "setup_check"
+        self.scan_message = "Setup checked. Fix anything listed, hold still, and check again."
+        r = self.setup_result
+        if r.status == "complete":
+            return [speak(f"{setup.name} is complete and correctly arranged.", "success")]
+        findings = ((r.missing, "missing"), (r.unexpected, "unexpected"), (r.misplaced, "in the wrong zone"))
+        parts = [f"{len(items)} {word}" for items, word in findings if items]
+        return [speak(f"{setup.name} needs attention: " + ", ".join(parts) + ".", "error")]
+
+    def _can_capture(self) -> bool:
+        return (self.workspace == "setup" and self.detector_kind == "semantic" and self.scan_status == "valid"
+                and self.last_scan_purpose == "procedure" and self.last_scene is not None
+                and bool(self.last_scene.objects))
+
+    def _clear_setup_result(self) -> None:
+        self.setup_result, self.setup_result_stale = None, False
+
+    def setup_status(self) -> dict:
+        setups = self.setups.list()
+        selected = next((s for s in setups if s.id == self.selected_setup_id), None)
+        return {
+            "available": self.cfg.semantic_beta,
+            "setups": [{"id": s.id, "name": s.name, "objectCount": len(s.objects)} for s in setups],
+            "selected": selected.to_json() if selected else None,
+            "canCapture": self._can_capture(),
+            "canCheck": self.workspace == "setup" and selected is not None and self._can_scan(),
+            "checking": self.pending_check is not None,
+            "result": self.setup_result.to_json() if self.setup_result else None,
+            "resultStale": self.setup_result_stale,
+            "repositoryErrors": list(self.setups.errors),
+        }
 
     # -- color calibration ----------------------------------------------------------------------
 
@@ -431,6 +580,8 @@ class Session:
         return {
             "type": "update",
             "mode": self.mode,
+            "workspace": self.workspace,
+            "setup": self.setup_status(),
             "detector": self.detector_status(),
             "notice": self.notice,
             "scene": self.last_scene.to_json() if self.last_scene else None,

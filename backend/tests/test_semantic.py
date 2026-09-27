@@ -69,17 +69,19 @@ class ControlledDetector:
         self.release = threading.Event()
         self.release.set()
         self.calls = []
+        self.labels_seen = []
         self.boxes = BOXES
         self.error = None
 
-    def detect(self, image, now, labels=LABELS):
+    def detect(self, image, now, labels=LABELS, allow_missing=False):
         self.calls.append(now)
+        self.labels_seen.append(labels)
         self.started.set()
         if not self.release.wait(3):
             raise TimeoutError("test detector did not release")
         if self.error:
             raise self.error
-        return semantic_scene(self.boxes, labels, Settings().vision, now)
+        return semantic_scene(self.boxes, labels, Settings().vision, now, allow_missing)
 
     def close(self):
         self.release.set()

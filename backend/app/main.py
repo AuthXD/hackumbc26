@@ -131,6 +131,14 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     snap = session.reset_colors()
                 elif kind == "detector":
                     snap = session.configure_detector(str(cmd.get("kind", "")), str(cmd.get("labels", "")))
+                elif kind == "workspace":
+                    snap = session.set_workspace(str(cmd.get("workspace", "")))
+                elif kind == "setup_capture":
+                    snap = await asyncio.to_thread(session.capture_setup, str(cmd.get("name", "")))
+                elif kind == "setup_select":
+                    snap = session.select_setup(str(cmd.get("id", "")))
+                elif kind == "setup_check":
+                    snap = session.check_setup()
                 else:
                     continue
                 await hub.broadcast(snap)

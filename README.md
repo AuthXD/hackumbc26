@@ -62,6 +62,29 @@ take roughly 20 seconds; warm scans take about 2 seconds on the tested RTX 4060 
 in this mode. If a scan fails, pause the procedure before explicitly switching back to Color mode; the learned
 semantic procedure is preserved.
 
+### Setup Check mode (needs the Semantic Objects beta)
+
+Setup Check is separate from Teach/Practice. It learns what an organized workspace looks like, such as a lab bench,
+a training tray, or a tool board, and then checks whether a table is complete and correctly arranged.
+
+1. Click **Setup Check** next to **Procedure**. This switches to semantic scanning and hides the procedure controls.
+2. Enter the objects that belong in the setup under **Object descriptions** and press **Apply objects**.
+3. Arrange the organized table, hold still, and press **Scan Objects**. Once the scan is accepted, type a
+   **Setup name** and press **Capture Setup**. Each object's zone is saved to `backend/data/setups/<name>.json`.
+   Capturing an existing name updates that setup.
+4. Later, choose the setup under **Saved setup**, hold the table still, and press **Check Setup**.
+
+The result is deterministic, comparing labels and zones only:
+- **Complete and correctly arranged**
+- **Missing**: an expected object was not found
+- **Unexpected**: a configured description that is not part of the setup was found on the table
+- **Wrong zone**: the object was found, but in a different zone
+
+A failed or ambiguous scan (worker error, duplicate or overlapping objects, or motion during the scan) produces no
+verdict and clears the previous one. Moving the table after a check marks the result as out of date. No LLM or
+Gemini call is involved. Setup Check never reads or writes the saved procedure, and procedure buttons and shortcuts
+are disabled while it is active.
+
 ---
 
 ## Physical setup
@@ -110,9 +133,9 @@ themselves live in `backend/app/config.py`.
 npm test
 ```
 
-This runs 91 backend tests: the sequence engine, vision on synthetic JPEG frames, the stability filter, end-to-end
-sessions with a simulated hand, semantic scan scheduling and worker failures, integration fallbacks, and an app
-smoke test.
+This runs 107 backend tests: the sequence engine, vision on synthetic JPEG frames, the stability filter, end-to-end
+sessions with a simulated hand, semantic scan scheduling and worker failures, Setup Check verdicts and
+persistence, integration fallbacks, and an app smoke test.
 
 ```bash
 npm run demo:check
@@ -136,12 +159,13 @@ backend/app/
   stability.py     turns noisy frames into committed "stable" arrangements
   engine.py        TeachRecorder + PracticeEngine (deterministic pass/fail)
   describe.py      deterministic step / correction wording
-  session.py       modes, keyframes, persistence
+  session.py       modes, keyframes, persistence, Setup Check workspace
+  setups.py        Setup Check types, SetupRepository + local JSON store, deterministic checker
   integrations.py  Gemini step wording, ElevenLabs voice (both optional)
   main.py          FastAPI: /ws, /api/speak, /api/keyframes
 backend/tests/     pytest suite
 backend/demo_check.py  live 3-run demo check
-frontend/src/      React UI (App, StatusCard, Timeline, Overlay, Simulator, speech)
+frontend/src/      React UI (App, StatusCard, Timeline, SetupPanel, Overlay, Simulator, speech)
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md), [DEMO_SCRIPT.md](DEMO_SCRIPT.md), and [PROGRESS.md](PROGRESS.md).
@@ -168,6 +192,11 @@ The local LocateAnything benchmark and constrained beta decision are documented 
 - Semantic Objects is an opt-in, manual-scan beta: 2–6 uniquely described, separated objects; no stacking or
   automatic continuous tracking. The broader 12-object benchmark reached 58.3%, so use the verified four-object
   set rather than claiming arbitrary-object reliability.
+- Setup Check inherits the semantic beta's limits. A detector miss is reported as *Missing*: it can cause a false
+  alarm, but never a false pass. Unexpected objects are only found among the configured object descriptions (at
+  most 6 per scan, including the setup's own). Checks compare zones, not exact positions. Setups are stored
+  locally only. While a semantic *procedure* is saved, its object descriptions stay locked (existing rule), so Setup
+  Check scans with those descriptions until the procedure is reset.
 - Stacking is inferred from a single 2D view. Touching objects can look stacked. Objects that haven't moved since
   the last settled state are never newly counted as stacked, which removes most false positives.
 - An object hidden inside an opaque container counts as occluded. Use open or marked container areas.

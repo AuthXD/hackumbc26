@@ -50,3 +50,20 @@ the model before judges arrive; the verified warm scan is about 2 seconds. Do no
 
 If it cannot see exactly one of every requested object, separate the objects and retry. If the worker fails, press
 **Pause procedure**, select **Color**, and continue with the primary demo. The semantic procedure remains saved.
+
+## Optional Setup Check (about 45 s, semantic beta)
+
+Pre-warm the model first. Object descriptions: `blue water bottle, brown wallet, green smartwatch` (all three belong
+in the setup), then apply them.
+
+1. Click **Setup Check**. Spread the three objects across Zones A, B, and C, hands off, and press **Scan Objects**.
+   Type `Lab bench` and press **Capture Setup**.
+   > "TeachBack just learned what a correctly set-up bench looks like."
+2. Take the wallet away and move the smartwatch to another zone. Hands off, then press **Check Setup**.
+   The panel shows **Needs attention**, with *Missing: brown wallet* and *Wrong zone: green smartwatch*.
+3. To show *Unexpected*: add `blue smartphone` to the descriptions, apply, place the phone, and check again.
+4. Restore the bench and check again. It shows **Complete and correctly arranged**.
+   > "Same deterministic check for lab setups, training trays, or tool boards. The AI finds objects; plain rules
+   > decide pass/fail."
+
+Switch back with **Procedure**. The saved procedure is untouched.

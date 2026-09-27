@@ -33,6 +33,25 @@
 - **PracticeState**: `expectedStepIndex`, `status` (setup / waiting / step_complete / error / complete),
   `errorType`, expected / observed / fix text.
 
+## Setup Check (backend/app/setups.py)
+
+A second product mode, separate from Teach/Practice. `Session.workspace` is `procedure` or `setup`. In `setup`,
+procedure commands are refused and the detector stays semantic.
+
+- **SetupObject** `{label, zone}` and **SavedSetup** `{id (slug of name), name, objects[1–6], createdAt}`. Both are
+  validated pydantic types with unique case-insensitive labels, and the id must match the name.
+- **SetupCheckResult** `{status: complete | needs_attention, correct, missing, unexpected, misplaced, checkedAt}`.
+  The model itself rejects `complete` whenever any finding is present.
+- **SetupRepository** protocol (`list` / `get` / `save` / `errors`). `JsonSetupRepository` stores one file per
+  setup in `DATA_DIR/setups/`, writes atomically, and skips and reports malformed files. It is the only
+  implementation for now; a database-backed repository can replace it without touching the session.
+- **Capture** requires an accepted *strict* semantic scan: exactly one box per configured description.
+- **Check** submits a scan with `purpose="setup_check"`. Its vocabulary is the setup's labels plus the other
+  configured descriptions (max 6). Only that purpose uses `allow_missing`, because absence is the finding; duplicate,
+  unknown, invalid, and overlapping boxes are still rejected. `check_setup()` compares labels and zones.
+  A worker error or ambiguous scan yields no result, motion discards an in-flight check, and a later move marks the
+  last result stale. No LLM is involved.
+
 ## Key decisions
 
 1. **Steps are state transitions, not captions.** Teaching records the before and after arrangement of each settled
@@ -68,4 +87,6 @@
 - `test_session.py`: end-to-end through real frames with a simulated hand.
 - `test_integrations.py`: Gemini and ElevenLabs with mock transports.
 - `test_app.py`: app smoke test.
+- `test_setup.py`: Setup Check capture/persistence, all verdict types, malformed files, scan failures, and procedure
+  isolation.
 - `demo_check.py`: three full demos against the live server.

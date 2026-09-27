@@ -17,11 +17,57 @@ function sceneSummary(u: ServerUpdate): string {
   return objs.map((o) => `${o.id} ${o.stackedOn ? `on ${o.stackedOn}` : o.zone ? `in ${o.zone}` : "outside"}`).join(" · ");
 }
 
+const zoneText = (zone: string | null) => (zone ? `Zone ${zone}` : "outside the zones");
+
+/** Setup Check verdicts come only from the backend's deterministic comparison. */
+function setupView(u: ServerUpdate): View {
+  const setup = u.setup!;
+  const d = u.detector;
+  const r = setup.result;
+  const eyebrow = `Setup Check${setup.selected ? ` · ${setup.selected.name}` : ""}`;
+  const expected = setup.selected
+    ? setup.selected.objects.map((o) => `${o.label} in ${zoneText(o.zone)}`).join(" · ")
+    : "Scan the organized table and capture it, or choose a saved setup.";
+  if (setup.checking) {
+    return { tone: "neutral", eyebrow, headline: "Checking setup…", expected, observed: d?.message ?? "" };
+  }
+  if (r && !setup.resultStale) {
+    if (r.status === "complete") {
+      return { tone: "success", eyebrow, headline: "Complete and correctly arranged", expected,
+        observed: `All ${r.correct.length} expected objects are present and in place.` };
+    }
+    const found = [
+      ...r.missing.map((o) => `${o.label} is missing`),
+      ...r.unexpected.map((o) => `${o.label} should not be here (${zoneText(o.zone)})`),
+      ...r.misplaced.map((m) => `${m.label} is in ${zoneText(m.observedZone)}`),
+    ];
+    const fix = [
+      ...r.missing.map((o) => `Add ${o.label} to ${zoneText(o.zone)}.`),
+      ...r.unexpected.map((o) => `Remove ${o.label}.`),
+      ...r.misplaced.map((m) => `Move ${m.label} to ${zoneText(m.expectedZone)}.`),
+    ];
+    return { tone: "error", eyebrow, headline: "Setup needs attention", expected, observed: found.join(" · "),
+      fix: fix.join(" ") };
+  }
+  if (d && (d.scanState === "error" || d.scanState === "ambiguous")) {
+    return { tone: d.scanState === "error" ? "error" : "warning", eyebrow, headline: "No verdict — scan failed",
+      expected, observed: d.message, fix: "Separate the objects, keep the table still, and try again." };
+  }
+  return {
+    tone: "neutral",
+    eyebrow,
+    headline: r ? "Table changed — check again" : setup.selected ? "Ready to check" : "Capture an organized setup",
+    expected,
+    observed: d?.message ?? "",
+  };
+}
+
 export function statusView(u: ServerUpdate | null): View {
   if (!u || !u.mode) {
     return { tone: "neutral", eyebrow: "Connecting", headline: "Starting up…", expected: "", observed: "" };
   }
   const tracker = u.tracker;
+  if (u.workspace === "setup" && u.setup) return setupView(u);
   if (u.detector?.kind === "semantic" && u.detector.scanState !== "valid") {
     const d = u.detector;
     return {

@@ -200,3 +200,18 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- setup check ---------- */
+.segmented.workspace button { font-size: 16px; font-weight: 600; padding: 10px 16px; }
+.setup-panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 10px; }
+.setup-row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.setup-name { flex: 1 1 200px; }
+.setup-select { flex: 1 1 220px; }
+.setup-select select { font: inherit; font-size: 16px; padding: 9px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); }
+.setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.setup-verdict { grid-column: 1 / -1; font-size: 26px; font-weight: 700; padding: 10px 14px; border-radius: 12px; border-left: 8px solid var(--tone); background: color-mix(in srgb, var(--tone) 12%, transparent); }
+.setup-list { --tone: var(--line); border: 1px solid var(--line); border-top: 4px solid var(--tone); border-radius: 12px; padding: 10px 14px; }
+.setup-list.tone-neutral { --tone: var(--neutral); }
+.setup-list h3 { margin: 0 0 6px; font-size: 15px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--tone); }
+.setup-list h3 span { color: var(--muted); }
+.setup-list ul { margin: 0; padding-left: 18px; font-size: 17px; line-height: 1.45; }

@@ -187,3 +187,24 @@ Key decisions:
 - **Pending input:** saved tabletop photos for at least three arrangements and a tenth
   object. User supplied object names, not images. Do not implement the production
   Detector interface/tracking/scheduling until the full adoption gate passes.
+
+### Setup Check mode (2026-09-26)
+- New product unit, separate from Teach/Practice: capture an accepted semantic scan as a named expected setup, save
+  it locally, select it, and check a new scan against it. Reports complete / missing / unexpected / wrong zone.
+- `backend/app/setups.py`: explicit types (`SetupObject`, `SavedSetup`, `MisplacedObject`, `SetupCheckResult`), a
+  `SetupRepository` protocol, `JsonSetupRepository` (one atomic JSON file per setup under `DATA_DIR/setups/`,
+  malformed files skipped and reported), and a pure `check_setup()`. No Gemini/LLM involvement.
+- Detector: `semantic_scene(..., allow_missing=False)`. Only scans submitted with `purpose="setup_check"` allow
+  absent labels. Duplicate, unknown, invalid, and overlapping boxes stay ambiguous, and LocateAnything inference is
+  unchanged. Procedure scans remain strict.
+- Session: `workspace` = procedure | setup. In setup, procedure commands and the Color switch are refused, so
+  `procedure.json` is never touched. Failed or ambiguous check scans give no verdict and clear the previous one;
+  motion cancels an in-flight check and marks an old result stale.
+- UI: Procedure / Setup Check selector, setup name + Capture Setup, saved-setup selector + Check Setup, and result
+  lists (Missing / Unexpected / Wrong zone / Correct) plus a Setup view in the status card.
+- Verification: see the final report for this unit (npm test, typecheck, build, demo:check, git diff --check).
+  An isolated browser run (API :8011 with the beta enabled, temp data dir) confirmed: mode switch, the selector
+  listing a saved setup, a malformed file reported, the expected list, the T shortcut ignored in Setup, and
+  switching back restoring the procedure controls, with no console errors. Real-camera scans were not possible in
+  the IDE browser.
+- Next unit: a Tiger Data `SetupRepository` implementing the same protocol (no session changes expected).

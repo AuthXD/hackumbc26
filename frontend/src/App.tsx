@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Overlay } from "./Overlay";
+import { SetupPanel } from "./SetupPanel";
 import { Simulator, type SimulatorHandle } from "./Simulator";
 import { speaker } from "./speech";
 import { StatusCard, statusView } from "./StatusCard";
@@ -83,13 +84,16 @@ export default function App() {
   }, [source, ready, videoRef]);
 
   const mode = u?.mode ?? "idle";
+  const setupMode = u?.workspace === "setup";
   const hasProcedure = !!u?.procedure?.steps.length;
   const canFinish = mode === "teaching" && (u?.teach?.stepsRecorded ?? 0) > 0;
 
   // Presenter shortcuts: T teach, F finish, U undo, P practice, R reset, M mute.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (setupMode) return; // procedure shortcuts do nothing in Setup Check
       const k = e.key.toLowerCase();
       if (k === "t") command("teach");
       else if (k === "f") command("finish");
@@ -100,7 +104,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [command]);
+  }, [command, setupMode]);
 
   const view = statusView(u);
   const tracker = u?.tracker;
@@ -159,7 +163,7 @@ export default function App() {
         <section className="semantic-controls" aria-label="Object detector">
           <div className="semantic-toolbar">
             <div className="segmented" role="group" aria-label="Detector mode">
-              <button className={!semantic ? "on" : ""} disabled={detector?.switchLocked}
+              <button className={!semantic ? "on" : ""} disabled={detector?.switchLocked || setupMode}
                 onClick={() => send({ type: "detector", kind: "color" })}>Color</button>
               <button className={semantic ? "on" : ""}
                 disabled={!detector?.betaEnabled || detector.switchLocked || source === "sim"}
@@ -192,6 +196,17 @@ export default function App() {
       )}
 
       <nav className="controls" aria-label="Mode controls">
+        <div className="segmented workspace" role="group" aria-label="Product mode">
+          <button className={!setupMode ? "on" : ""} onClick={() => send({ type: "workspace", workspace: "procedure" })}>
+            Procedure
+          </button>
+          <button className={setupMode ? "on" : ""} disabled={!u?.setup?.available || mode !== "idle"}
+            title={!u?.setup?.available ? "Setup Check needs the Semantic Objects beta (TEACHBACK_SEMANTIC_BETA=1)" : undefined}
+            onClick={() => send({ type: "workspace", workspace: "setup" })}>
+            Setup Check
+          </button>
+        </div>
+        {!setupMode && <>
         <button className={`btn teach ${mode === "teaching" ? "active" : ""}`}
           disabled={semantic && (source !== "camera" || objectDescriptions !== configuredObjects)} onClick={() => command("teach")}>
           Teach
@@ -214,6 +229,7 @@ export default function App() {
         <button className="btn subtle" onClick={() => command("reset")}>
           Reset
         </button>
+        </>}
         {u?.notice && <span className="notice">{u.notice}</span>}
       </nav>
 
@@ -286,7 +302,7 @@ export default function App() {
         <StatusCard view={view} />
       </main>
 
-      <Timeline u={u} />
+      {setupMode ? <SetupPanel u={u} send={send} /> : <Timeline u={u} />}
 
       <details className="debug">
         <summary>

@@ -6,7 +6,7 @@ import math
 import tempfile
 import threading
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 import cv2
 import numpy as np
@@ -32,7 +32,10 @@ def parse_labels(text: str) -> tuple[str, ...]:
     return labels
 
 
-def semantic_scene(detections: list[dict], labels: tuple[str, ...], cfg: VisionConfig, now: float) -> SceneState:
+def semantic_scene(detections: list[dict], labels: tuple[str, ...], cfg: VisionConfig, now: float,
+                   allow_missing: bool = False) -> SceneState:
+    """Validate raw boxes. `allow_missing` is only for Setup Check, where absence is the finding being reported;
+    duplicates, unknown labels, invalid boxes and heavy overlap are still rejected as ambiguous."""
     labels = parse_labels(",".join(labels))
     vocabulary = {label.casefold(): label for label in labels}
     by_label = {}
@@ -50,9 +53,9 @@ def semantic_scene(detections: list[dict], labels: tuple[str, ...], cfg: VisionC
         by_label[key] = SceneObject(kind="semantic", id=label, label=label, color=None, confidence=None,
                                    bbox=(x1, y1, x2 - x1, y2 - y1), center=((x1 + x2) / 2, (y1 + y2) / 2), zone=None)
     missing = [label for label in labels if label.casefold() not in by_label]
-    if missing:
+    if missing and not allow_missing:
         raise AmbiguousScan("Cannot see exactly one of: " + ", ".join(missing) + ". Keep every object fully visible.")
-    objects = [by_label[label.casefold()] for label in labels]
+    objects = [by_label[label.casefold()] for label in labels if label.casefold() in by_label]
     for i, a in enumerate(objects):
         ax, ay, aw, ah = a.bbox
         for b in objects[i + 1:]:
@@ -65,7 +68,8 @@ def semantic_scene(detections: list[dict], labels: tuple[str, ...], cfg: VisionC
 
 
 class Detector(Protocol):
-    def detect(self, frame: np.ndarray, now: float, labels: tuple[str, ...] = ()) -> SceneState: ...
+    def detect(self, frame: np.ndarray, now: float, labels: tuple[str, ...] = (),
+               allow_missing: bool = False) -> SceneState: ...
     def close(self) -> None: ...
 
 
@@ -73,7 +77,7 @@ class ColorDetector:
     def __init__(self, cfg: VisionConfig):
         self.cfg = cfg
 
-    def detect(self, frame, now, labels=()):
+    def detect(self, frame, now, labels=(), allow_missing=False):
         return analyze_frame(frame, self.cfg, now)
 
     def close(self):
@@ -85,7 +89,7 @@ class LocateAnythingDetector:
         self.cfg = cfg
         self.worker = worker or LocateWorker(cfg)
 
-    def detect(self, frame, now, labels=()):
+    def detect(self, frame, now, labels=(), allow_missing=False):
         labels = parse_labels(",".join(labels))
         ratio = min(1, 640 / max(frame.shape[:2]))
         small = cv2.resize(frame, (round(frame.shape[1] * ratio), round(frame.shape[0] * ratio)))
@@ -96,7 +100,7 @@ class LocateAnythingDetector:
         try:
             if not cv2.imwrite(str(path), small):
                 raise OSError("Could not prepare semantic keyframe")
-            return semantic_scene(self.worker.predict(path, labels), labels, self.cfg.vision, now)
+            return semantic_scene(self.worker.predict(path, labels), labels, self.cfg.vision, now, allow_missing)
         finally:
             path.unlink(missing_ok=True)
 
@@ -111,6 +115,7 @@ class ScanRequest:
     jpeg: bytes
     labels: tuple[str, ...]
     captured_at: float
+    purpose: Literal["procedure", "setup_check"] = "procedure"
 
 
 @dataclass
@@ -138,13 +143,13 @@ class LatestScan:
             self.version += 1
             self.pending = self.result = None
 
-    def submit(self, frame, jpeg, labels, now):
+    def submit(self, frame, jpeg, labels, now, purpose="procedure"):
         with self.condition:
             if self.closed:
                 raise RuntimeError("Scanner is closed")
             self.version += 1
             self.result = None
-            self.pending = ScanRequest(self.version, frame.copy(), jpeg, labels, now)
+            self.pending = ScanRequest(self.version, frame.copy(), jpeg, labels, now, purpose)
             if self.thread is None:
                 self.thread = threading.Thread(target=self._run, daemon=True, name="semantic-scanner")
                 self.thread.start()
@@ -159,7 +164,9 @@ class LatestScan:
                 request, self.pending = self.pending, None
                 self.busy = True
             try:
-                result = ScanResult(request, self.detector.detect(request.frame, request.captured_at, request.labels))
+                scene = self.detector.detect(request.frame, request.captured_at, request.labels,
+                                             allow_missing=request.purpose == "setup_check")
+                result = ScanResult(request, scene)
             except Exception as exc:
                 result = ScanResult(request, None, str(exc), isinstance(exc, AmbiguousScan))
             with self.condition:
