@@ -35,6 +35,47 @@ Then open **http://localhost:5173** in Chrome or Edge and allow camera access.
 `npm run dev` starts the API on :8000 and the web app on :5173, which proxies `/api` and `/ws`. Stop both with
 Ctrl+C, or run `npm run stop` if a previous run left a port busy.
 
+### Reproduce the judging demo locally
+
+TeachBack is a local application. After the one-time setup above, start it from the repository root:
+
+```bash
+npm run dev
+```
+
+Keep that terminal open, then use one of these two routes.
+
+#### No camera, GPU, or API keys
+
+1. Open **http://localhost:5173/?demo=1**.
+2. Select **Demo Lab** if it is not already selected.
+3. Expand **Toolbox handoff** or **Clinical training**.
+4. Drag each photographed object into the numbered registered zone.
+5. Try a wrong object or zone first to see TeachBack stop the move, then complete the procedure in order.
+
+Demo Lab is bundled with the frontend and does not use the camera, LocateAnything, Gemini, Tiger Data, or an
+internet connection.
+
+#### Physical three-object demo
+
+This route additionally needs the [LocateAnything WSL/CUDA setup](#locateanything-wsl-and-cuda), a real camera,
+and `TEACHBACK_SEMANTIC_BETA=1` in `.env`.
+
+1. Open **http://localhost:5173** in Chrome or Edge.
+2. Connect the phone camera over trusted HTTPS, or use the laptop webcam.
+3. Calibrate the mat using the four corner landmarks shown by the app.
+4. Select **Semantic Objects** and wait for **Local model ready**.
+5. Enter `brown wallet, red box, green watch`, then press **Apply objects**.
+6. Arrange the green watch in Zone A, red box in Zone B, and brown wallet in Zone C. Hold still and press
+   **Scan Objects**.
+7. Press **Teach**. For step one, move the green watch A → B and red box B → A, then scan.
+8. For step two, move the brown wallet C → B and green watch B → C, then scan and press **Finish Teaching**.
+9. Restore the starting layout and press **Restart Practice**. Repeat the moves, or deliberately move the wallet
+   first to see the wrong-step correction.
+
+Semantic scans are manual and fail closed: an ambiguous scan produces no passing verdict. The local model can take
+roughly 15 seconds to load cold, so wait for **Local model ready** before beginning.
+
 ### Use a phone as the camera
 
 Press **Connect phone** on the laptop. TeachBack shows a QR and a phone-only page that requests the rear camera.
