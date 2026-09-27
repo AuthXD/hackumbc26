@@ -113,6 +113,10 @@ class Settings:
         default_factory=lambda: os.getenv("ELEVENLABS_VOICE_ID") or "JBFqnCBsd6RMkjVDRZzb".strip()
     )
     elevenlabs_model: str = field(default_factory=lambda: os.getenv("ELEVENLABS_MODEL") or "eleven_flash_v2_5".strip())
+    # Tiger Cloud (PostgreSQL) for saved setups. Secret: repr=False keeps it out of any logged Settings.
+    tiger_database_url: str = field(default_factory=lambda: os.getenv("TIGER_DATABASE_URL", "").strip(), repr=False)
+    tiger_connect_timeout: int = 5  # seconds, per connection attempt
+    tiger_statement_timeout_ms: int = 5000  # per transaction
 
 
 settings = Settings()

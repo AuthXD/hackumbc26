@@ -78,7 +78,7 @@ async def _describe(index: int, after_image: str | None) -> None:
 @app.get("/api/health")
 def health() -> dict:
     return {"ok": True, "mode": session.mode, "gemini": gemini.enabled, "elevenlabs": voice.enabled,
-            "detector": session.detector_status()}
+            "detector": session.detector_status(), "storage": session.setups.status().to_json()}
 
 
 @app.get("/api/keyframes/{key}.jpg")
@@ -139,6 +139,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     snap = session.select_setup(str(cmd.get("id", "")))
                 elif kind == "setup_check":
                     snap = session.check_setup()
+                elif kind == "setup_refresh":
+                    snap = await asyncio.to_thread(session.refresh_setups)
                 else:
                     continue
                 await hub.broadcast(snap)

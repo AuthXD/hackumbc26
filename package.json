@@ -13,7 +13,8 @@
     "build": "npm --prefix frontend run build",
     "dev:api:reload": "node scripts/py.mjs -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload",
     "stop": "node scripts/stop.mjs",
-    "demo:check": "node scripts/py.mjs demo_check.py"
+    "demo:check": "node scripts/py.mjs demo_check.py",
+    "tiger:check": "node scripts/py.mjs tiger_check.py"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"

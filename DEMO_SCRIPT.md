@@ -67,3 +67,11 @@ in the setup), then apply them.
    > decide pass/fail."
 
 Switch back with **Procedure**. The saved procedure is untouched.
+
+**With Tiger Data (optional).** If `TIGER_DATABASE_URL` is set and `npm run tiger:check` passed, the Setup panel
+shows **Storage: Tiger Data**. Point at it after step 1:
+> "That bench definition just went to Tiger Cloud, so any station can check against the same reference."
+
+If the panel instead says **Tiger Data unavailable** (for example, venue Wi-Fi), capture is disabled on purpose.
+Press **Retry connection**, or remove the variable and restart to demo with local storage. Never show `.env` on
+screen.

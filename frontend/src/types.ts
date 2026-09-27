@@ -94,8 +94,11 @@ export type SetupCheckResult = {
   checkedAt: number;
 };
 
+export type StorageStatus = { provider: "local" | "tiger"; state: "ready" | "error"; message: string };
+
 export type SetupState = {
   available: boolean;
+  storage: StorageStatus;
   setups: { id: string; name: string; objectCount: number }[];
   selected: SavedSetup | null;
   canCapture: boolean;

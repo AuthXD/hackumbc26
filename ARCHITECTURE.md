@@ -42,9 +42,26 @@ procedure commands are refused and the detector stays semantic.
   validated pydantic types with unique case-insensitive labels, and the id must match the name.
 - **SetupCheckResult** `{status: complete | needs_attention, correct, missing, unexpected, misplaced, checkedAt}`.
   The model itself rejects `complete` whenever any finding is present.
-- **SetupRepository** protocol (`list` / `get` / `save` / `errors`). `JsonSetupRepository` stores one file per
-  setup in `DATA_DIR/setups/`, writes atomically, and skips and reports malformed files. It is the only
-  implementation for now; a database-backed repository can replace it without touching the session.
+- **SetupRepository** protocol (`list` / `get` / `save` / `refresh` / `status` / `errors`). `list`/`get` serve a
+  validated in-memory cache (they run on every snapshot, ~5x/s); only `refresh` and `save` touch storage.
+  `status()` returns **StorageStatus** `{provider: local | tiger, state: ready | error, message}`, surfaced in
+  snapshots and `/api/health`.
+  - `JsonSetupRepository`: one file per setup in `DATA_DIR/setups/`, atomic writes, malformed files skipped and
+    reported.
+  - `TigerSetupRepository` (`tiger.py`, psycopg 3): Tiger Cloud is plain PostgreSQL. TLS is enforced (sslmode
+    upgraded to `require` and `ssl_in_use` checked), with `connect_timeout` and a per-transaction
+    `statement_timeout` via `set_config(..., true)`. SQL is parameterized. `save` is
+    `INSERT ... ON CONFLICT (id) DO UPDATE ... RETURNING`, and the returned row is validated before caching. Every
+    row read passes `SavedSetup` validation; invalid rows are skipped into `errors`. Failures expose only the
+    exception class, never the URL, host, or user.
+  - `create_setup_repository()` chooses Tiger when `TIGER_DATABASE_URL` is set, else JSON. A configured but
+    unreachable Tiger yields a Tiger repository in `error`. It never falls back to local files, and capture is
+    refused. The session holds no SQL. It saves outside `Session.lock` so frames keep flowing during the
+    (bounded) round trip.
+- **Schema** `backend/sql/001_tiger_setups.sql`: a normal table (not a hypertable; rows are current records, not
+  events) `teachback_setups(id TEXT PK, name, objects JSONB, created_at, updated_at DEFAULT NOW())`. CHECK
+  constraints cover the id slug, name length, and a 1–6 element objects array. It is applied only by the explicit
+  `npm run tiger:check`, which also runs a rolled-back insert/upsert/read/constraint probe.
 - **Capture** requires an accepted *strict* semantic scan: exactly one box per configured description.
 - **Check** submits a scan with `purpose="setup_check"`. Its vocabulary is the setup's labels plus the other
   configured descriptions (max 6). Only that purpose uses `allow_missing`, because absence is the finding; duplicate,
@@ -89,4 +106,7 @@ procedure commands are refused and the detector stays semantic.
 - `test_app.py`: app smoke test.
 - `test_setup.py`: Setup Check capture/persistence, all verdict types, malformed files, scan failures, and procedure
   isolation.
+- `test_tiger.py` (+ `fake_tiger.py`, an offline psycopg fake with transactions and the schema's constraints):
+  selection, idempotent migration, parameterized upsert, row validation, outage without fallback, refused capture,
+  credential redaction, cache use, TLS enforcement, the non-blocking save, and the `tiger:check` flow.
 - `demo_check.py`: three full demos against the live server.

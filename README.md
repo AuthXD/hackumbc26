@@ -70,8 +70,9 @@ a training tray, or a tool board, and then checks whether a table is complete an
 1. Click **Setup Check** next to **Procedure**. This switches to semantic scanning and hides the procedure controls.
 2. Enter the objects that belong in the setup under **Object descriptions** and press **Apply objects**.
 3. Arrange the organized table, hold still, and press **Scan Objects**. Once the scan is accepted, type a
-   **Setup name** and press **Capture Setup**. Each object's zone is saved to `backend/data/setups/<name>.json`.
-   Capturing an existing name updates that setup.
+   **Setup name** and press **Capture Setup**. Each object's zone is saved, either to
+   `backend/data/setups/<name>.json` or to Tiger Data when configured (below). Capturing an existing name updates
+   that setup.
 4. Later, choose the setup under **Saved setup**, hold the table still, and press **Check Setup**.
 
 The result is deterministic, comparing labels and zones only:
@@ -84,6 +85,29 @@ A failed or ambiguous scan (worker error, duplicate or overlapping objects, or m
 verdict and clears the previous one. Moving the table after a check marks the result as out of date. No LLM or
 Gemini call is involved. Setup Check never reads or writes the saved procedure, and procedure buttons and shortcuts
 are disabled while it is active.
+
+### Optional: saved setups in Tiger Data (Tiger Cloud / PostgreSQL)
+
+By default, saved setups are local JSON files. To keep them in Tiger Cloud instead:
+
+1. Copy the service connection string from Tiger Cloud's connection details into `.env` as `TIGER_DATABASE_URL`.
+   It contains a password; `.env` is git-ignored, so never commit it.
+2. Run the explicit migration and check. It creates the `teachback_setups` table if needed and verifies
+   select/insert/upsert/read validation inside a transaction that is rolled back:
+
+   ```bash
+   npm run tiger:check
+   ```
+
+3. Restart `npm run dev`. The Setup panel shows **Storage: Tiger Data** only after the table loaded successfully.
+
+TLS is always required (weaker `sslmode` values are upgraded to `require`, and the live connection is checked).
+Connections have a 5 s connect timeout, and each transaction has a 5 s statement timeout. Setups load once at
+startup into a validated in-memory cache; the database is contacted again only on **Capture Setup** and
+**Retry connection**. If Tiger is configured but unreachable, the app still starts, Procedure mode works, and
+the Setup panel shows **Tiger Data unavailable** with capture disabled. Nothing is silently written to local
+files instead. Connection details never appear in the UI, `/api/health`, or logs. Only an error class such as
+`OperationalError` is shown.
 
 ---
 
@@ -133,9 +157,10 @@ themselves live in `backend/app/config.py`.
 npm test
 ```
 
-This runs 107 backend tests: the sequence engine, vision on synthetic JPEG frames, the stability filter, end-to-end
+This runs 125 backend tests: the sequence engine, vision on synthetic JPEG frames, the stability filter, end-to-end
 sessions with a simulated hand, semantic scan scheduling and worker failures, Setup Check verdicts and
-persistence, integration fallbacks, and an app smoke test.
+persistence, Tiger Data persistence against an offline psycopg fake (no network or credentials needed),
+integration fallbacks, and an app smoke test.
 
 ```bash
 npm run demo:check
@@ -160,7 +185,10 @@ backend/app/
   engine.py        TeachRecorder + PracticeEngine (deterministic pass/fail)
   describe.py      deterministic step / correction wording
   session.py       modes, keyframes, persistence, Setup Check workspace
-  setups.py        Setup Check types, SetupRepository + local JSON store, deterministic checker
+  setups.py        Setup Check types, SetupRepository + local JSON store + selection, deterministic checker
+  tiger.py         TigerSetupRepository (psycopg 3, TLS, parameterized SQL, cached reads)
+backend/sql/       001_tiger_setups.sql (idempotent migration)
+backend/tiger_check.py  npm run tiger:check: migrate + rolled-back verification
   integrations.py  Gemini step wording, ElevenLabs voice (both optional)
   main.py          FastAPI: /ws, /api/speak, /api/keyframes
 backend/tests/     pytest suite
@@ -194,9 +222,11 @@ The local LocateAnything benchmark and constrained beta decision are documented 
   set rather than claiming arbitrary-object reliability.
 - Setup Check inherits the semantic beta's limits. A detector miss is reported as *Missing*: it can cause a false
   alarm, but never a false pass. Unexpected objects are only found among the configured object descriptions (at
-  most 6 per scan, including the setup's own). Checks compare zones, not exact positions. Setups are stored
-  locally only. While a semantic *procedure* is saved, its object descriptions stay locked (existing rule), so Setup
+  most 6 per scan, including the setup's own). Checks compare zones, not exact positions. While a semantic *procedure* is saved, its object descriptions stay locked (existing rule), so Setup
   Check scans with those descriptions until the procedure is reset.
+- Tiger Data storage covers saved setups only (not procedures). Setups saved from another machine appear after
+  a restart or **Retry connection**, not live. Moving from local JSON to Tiger does not copy existing local
+  setups; capture them again.
 - Stacking is inferred from a single 2D view. Touching objects can look stacked. Objects that haven't moved since
   the last settled state are never newly counted as stacked, which removes most false positives.
 - An object hidden inside an opaque container counts as occluded. Use open or marked container areas.

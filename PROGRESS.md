@@ -208,3 +208,24 @@ Key decisions:
   switching back restoring the procedure controls, with no console errors. Real-camera scans were not possible in
   the IDE browser.
 - Next unit: a Tiger Data `SetupRepository` implementing the same protocol (no session changes expected).
+
+### Tiger Data persistence for saved setups (2026-09-26)
+- `TigerSetupRepository` (`backend/app/tiger.py`, psycopg 3.2–3.3) implements the existing `SetupRepository`
+  protocol, which gained `refresh()` and `status()`. Session contains no SQL; `create_setup_repository()` picks
+  Tiger only when `TIGER_DATABASE_URL` is set.
+- TLS is enforced (sslmode upgraded to `require`; `pgconn.ssl_in_use` verified), with a 5 s connect timeout and a
+  5 s per-transaction statement timeout. All SQL is parameterized. Save is `INSERT ... ON CONFLICT (id) DO UPDATE`
+  `... RETURNING`, and the returned row is validated before caching. Reads are cached in memory: the database is
+  touched at startup, on capture, and on explicit Retry only.
+- Outage: Tiger stays selected in the error state (no local fallback). The app and Procedure mode still start.
+  Capture is refused with a sanitized message. The storage state is in snapshots, `/api/health`, and the Setup
+  panel (Storage: Local / Storage: Tiger Data / Tiger Data unavailable + Retry connection).
+- Capture saves outside `Session.lock`; a test proves frames are processed while a save is blocked.
+- Migration `backend/sql/001_tiger_setups.sql` (plain table + CHECK constraints) and `npm run tiger:check`
+  (migrate twice, rolled-back insert/upsert/read/constraint probe, sanitized output).
+- Verification: offline tests use `tests/fake_tiger.py`. Separately, the migration, repository, CHECK
+  constraints, statement timeout, and the full `tiger_check` flow were run against a real local PostgreSQL 16
+  (scratch `pgserver`, not a repo dependency). The non-TLS local server was correctly refused by
+  `tiger:check`. An isolated app with an unreachable `TIGER_DATABASE_URL` started normally and showed
+  "Tiger Data unavailable"; no credential appeared in health, logs, or the page.
+- **Live Tiger Cloud verification is pending**: no `TIGER_DATABASE_URL` exists on this machine.

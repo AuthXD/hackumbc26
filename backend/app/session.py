@@ -12,7 +12,14 @@ from .config import DATA_DIR, ColorRange, Settings, default_colors, settings
 from .engine import Event, PracticeEngine, TeachRecorder, speak
 from .detectors import ColorDetector, DEFAULT_LABELS, LatestScan, LocateAnythingDetector, parse_labels
 from .models import Procedure, SceneState, StepText
-from .setups import JsonSetupRepository, SavedSetup, SetupCheckResult, SetupRepository, check_setup
+from .setups import (
+    SavedSetup,
+    SetupCheckResult,
+    SetupRepository,
+    SetupStorageError,
+    check_setup,
+    create_setup_repository,
+)
 from .stability import StabilityTracker, TrackerResult
 from .vision import (
     MotionMeter,
@@ -65,7 +72,8 @@ class Session:
         self.still_since: float | None = None
         self.still_frames = 0
         self.workspace: Literal["procedure", "setup"] = "procedure"
-        self.setups: SetupRepository = setup_repository or JsonSetupRepository(SETUP_DIR)
+        # Local JSON, or Tiger Cloud when TIGER_DATABASE_URL is set. The choice lives in setups.py; no SQL here.
+        self.setups: SetupRepository = setup_repository or create_setup_repository(cfg, SETUP_DIR)
         self.selected_setup_id: str | None = None
         self.setup_result: SetupCheckResult | None = None
         self.setup_result_stale = False  # the table moved after the last check
@@ -330,18 +338,40 @@ class Session:
 
     def capture_setup(self, name: str) -> dict:
         with self.lock:
+            storage = self.setups.status()
+            if storage.state != "ready":
+                self.notice = f"Setup not saved: {storage.message}"
+                return self.snapshot()
             if not self._can_capture():
                 self.notice = "Scan Objects first: capture needs an accepted scan of every described object."
                 return self.snapshot()
             try:
                 setup = SavedSetup.from_scene(name, self.last_scene, time.time())
-                self.setups.save(setup)
-            except (ValueError, OSError) as exc:  # pydantic's ValidationError is a ValueError
+            except ValueError as exc:  # pydantic's ValidationError is a ValueError
                 self.notice = f"Setup not saved: {str(exc).splitlines()[0]}"
                 return self.snapshot()
+        # The save may be a database round trip (bounded by connect/statement timeouts). It runs outside
+        # Session.lock so camera frames keep flowing meanwhile.
+        try:
+            self.setups.save(setup)
+        except (SetupStorageError, ValueError, OSError) as exc:
+            with self.lock:
+                self.notice = f"Setup not saved: {str(exc).splitlines()[0]}"
+                return self.snapshot()
+        with self.lock:
             self.selected_setup_id = setup.id
             self._clear_setup_result()
             self.notice = f'Saved setup "{setup.name}" with {len(setup.objects)} objects.'
+            return self.snapshot()
+
+    def refresh_setups(self) -> dict:
+        """Explicitly reload saved setups from storage (outside Session.lock; may be a database round trip)."""
+        self.setups.refresh()
+        with self.lock:
+            if self.selected_setup_id and self.setups.get(self.selected_setup_id) is None:
+                self.selected_setup_id = None
+                self._clear_setup_result()
+            self.notice = self.setups.status().message
             return self.snapshot()
 
     def select_setup(self, setup_id: str) -> dict:
@@ -421,7 +451,8 @@ class Session:
             "available": self.cfg.semantic_beta,
             "setups": [{"id": s.id, "name": s.name, "objectCount": len(s.objects)} for s in setups],
             "selected": selected.to_json() if selected else None,
-            "canCapture": self._can_capture(),
+            "storage": self.setups.status().to_json(),
+            "canCapture": self._can_capture() and self.setups.status().state == "ready",
             "canCheck": self.workspace == "setup" and selected is not None and self._can_scan(),
             "checking": self.pending_check is not None,
             "result": self.setup_result.to_json() if self.setup_result else None,

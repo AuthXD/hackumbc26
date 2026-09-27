@@ -9,11 +9,14 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Callable, Literal, Protocol
 
 from pydantic import Field, ValidationError, field_validator, model_validator
 
 from .models import CamelModel, SceneState
+
+if TYPE_CHECKING:
+    from .config import Settings
 
 SETUP_ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 MAX_OBJECTS = 6
@@ -117,14 +120,32 @@ def check_setup(setup: SavedSetup, scene: SceneState, now: float) -> SetupCheckR
     )
 
 
+class StorageStatus(CamelModel):
+    """Honest, credential-free description of where setups are stored and whether that works."""
+
+    provider: Literal["local", "tiger"]
+    state: Literal["ready", "error"]
+    message: str = Field(max_length=200)
+
+
+class SetupStorageError(Exception):
+    """A save failed. The message is safe to show: it never contains connection details."""
+
+
 class SetupRepository(Protocol):
-    """Where saved setups live. The local JSON store is the only implementation for now."""
+    """Where saved setups live: local JSON files, or Tiger Cloud (PostgreSQL) when configured.
+
+    `list`/`get` must be served from a validated in-memory cache (they run on every snapshot, ~5x/s).
+    Only `refresh` and `save` may touch the backing store.
+    """
 
     errors: list[str]
 
     def list(self) -> list[SavedSetup]: ...
     def get(self, setup_id: str) -> SavedSetup | None: ...
     def save(self, setup: SavedSetup) -> None: ...
+    def refresh(self) -> None: ...
+    def status(self) -> StorageStatus: ...
 
 
 class JsonSetupRepository:
@@ -154,6 +175,12 @@ class JsonSetupRepository:
     def get(self, setup_id: str) -> SavedSetup | None:
         return self._load().get(setup_id) if SETUP_ID.match(setup_id or "") else None
 
+    def refresh(self) -> None:
+        self._cache = None  # next list/get re-reads the folder
+
+    def status(self) -> StorageStatus:
+        return StorageStatus(provider="local", state="ready", message="Saved as local JSON on this computer.")
+
     def save(self, setup: SavedSetup) -> None:
         self.directory.mkdir(parents=True, exist_ok=True)
         target = self.directory / f"{setup.id}.json"
@@ -161,3 +188,20 @@ class JsonSetupRepository:
         tmp.write_text(json.dumps(setup.to_json(), indent=2), encoding="utf-8")
         os.replace(tmp, target)  # atomic: a crash never leaves a half-written setup
         self._load()[setup.id] = setup
+
+
+def create_setup_repository(cfg: "Settings", local_dir: Path, connect: Callable | None = None) -> SetupRepository:
+    """Tiger Cloud when TIGER_DATABASE_URL is configured, otherwise local JSON.
+
+    A configured-but-unreachable Tiger database yields a Tiger repository in the error state. It never
+    falls back to local files, so a save is refused rather than silently landing somewhere else.
+    """
+    if not cfg.tiger_database_url:
+        return JsonSetupRepository(local_dir)
+    from .tiger import TigerSetupRepository  # psycopg is only imported when Tiger is configured
+
+    repo = TigerSetupRepository(cfg.tiger_database_url, connect=connect,
+                                connect_timeout=cfg.tiger_connect_timeout,
+                                statement_timeout_ms=cfg.tiger_statement_timeout_ms)
+    repo.refresh()
+    return repo

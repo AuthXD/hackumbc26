@@ -25,6 +25,7 @@ export function SetupPanel({ u, send }: { u: ServerUpdate | null; send: (payload
   const setup = u?.setup;
   if (!setup) return null;
   const result = setup.result;
+  const storage = setup.storage;
   const described = (o: SetupObject) => `${o.label} — ${zoneText(o.zone)}`;
 
   return (
@@ -54,6 +55,20 @@ export function SetupPanel({ u, send }: { u: ServerUpdate | null; send: (payload
         <button className="btn practice" disabled={!setup.canCheck} onClick={() => send({ type: "setup_check" })}>
           {setup.checking ? "Checking…" : "Check Setup"}
         </button>
+      </div>
+      <div className="setup-storage">
+        {/* "Tiger Data" is shown only when the Tiger repository actually loaded (state ready). */}
+        <span className={`pill storage-${storage.state}`} title={storage.message}>
+          {storage.state === "error"
+            ? storage.provider === "tiger" ? "Tiger Data unavailable" : "Local storage unavailable"
+            : storage.provider === "tiger" ? "Storage: Tiger Data" : "Storage: Local"}
+        </span>
+        {storage.state === "error" && (
+          <>
+            <span className="semantic-error" role="alert">{storage.message} Capture is disabled; nothing is saved locally instead.</span>
+            <button className="ghost" onClick={() => send({ type: "setup_refresh" })}>Retry connection</button>
+          </>
+        )}
       </div>
       <p className="hint">
         To capture: arrange the organized table, hold still, press <b>Scan Objects</b>, then <b>Capture Setup</b>. To
