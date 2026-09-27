@@ -119,7 +119,11 @@ def test_canonical_zones_run_left_to_right():
     zones = canonical_zones((960, 400), 0.1)
     assert [z.id for z in zones] == ["A", "B", "C"]
     assert all(z.y == pytest.approx(0.1) and z.h == pytest.approx(0.8) for z in zones)
-    assert zones[0].x == pytest.approx(0.1) and zones[2].x > zones[1].x > zones[0].x
+    assert zones[0].x == pytest.approx(0.1)
+    assert zones[0].x + zones[0].w == pytest.approx(zones[1].x)
+    assert zones[1].x + zones[1].w == pytest.approx(zones[2].x)
+    assert zones[2].x + zones[2].w == pytest.approx(0.9)
+    assert sum(z.w for z in zones) == pytest.approx(0.8)
     assert in_workspace(0.5, 0.5, 0.1) and not in_workspace(0.05, 0.5, 0.1) and not in_workspace(0.5, 0.95, 0.1)
     vision = canonical_vision(VisionConfig(), (960, 400), 0.1)
     assert [z.id for z in vision.zones] == ["A", "B", "C"] and VisionConfig().zones[0].y == 0.12

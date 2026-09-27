@@ -108,14 +108,14 @@ def homography_to_canonical(corners_px: np.ndarray, size: tuple[int, int]) -> np
     return cv2.getPerspectiveTransform(np.asarray(corners_px, np.float32), canonical_corners(size))
 
 
-def canonical_zones(size: tuple[int, int], band: float, gap: float = 0.02) -> list[Zone]:
-    """Zones A/B/C left to right. A is the physical top third of the portrait mat."""
+def canonical_zones(size: tuple[int, int], band: float) -> list[Zone]:
+    """Cover the usable mat with three contiguous zones from left to right."""
     del size  # columns are normalized; the image itself is landscape
     inner = 1 - 2 * band
-    third = (inner - 2 * gap) / 3
+    third = inner / 3
     zones = []
     for i, zid in enumerate("ABC"):
-        start = band + i * (third + gap)
+        start = band + i * third
         zones.append(Zone(zid, f"Zone {zid}", start, band, third, inner))
     return zones
 
