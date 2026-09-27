@@ -154,7 +154,14 @@ class Procedure(CamelModel):
 
 
 PracticeStatus = Literal["setup", "waiting", "step_complete", "error", "complete"]
-ErrorType = Literal["skipped_step", "out_of_order", "wrong_object", "wrong_placement", "extra_change"]
+ErrorType = Literal[
+    "skipped_step",
+    "out_of_order",
+    "wrong_object",
+    "wrong_placement",
+    "incomplete_step",
+    "extra_change",
+]
 
 
 class PracticeState(CamelModel):

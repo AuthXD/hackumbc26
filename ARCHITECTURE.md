@@ -1,5 +1,14 @@
 # TeachBack architecture
 
+## Phone camera ownership
+
+`GET /api/phone-link` returns either the configured trusted `TEACHBACK_PHONE_URL` or a discovered LAN fallback,
+with an explicit secure flag. `?phone=1` renders a rear-camera-only page. The newest WebSocket client owns frame
+input. The hub forwards that client's JPEG bytes to viewer tabs and sends every tab its own `active` flag; inactive
+laptop tabs stop their local frame pumps and render the relayed phone image under the shared overlay. Disconnecting
+the phone broadcasts ownership again so the laptop resumes automatically. A single async lock serializes JSON and
+binary WebSocket sends.
+
 ```
  Browser (React + Vite)                         Backend (FastAPI, Python 3.12)
 ┌──────────────────────────┐   JPEG frames    ┌──────────────────────────────────────────────┐

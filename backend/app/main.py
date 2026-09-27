@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from .config import settings
 from .integrations import ElevenLabsVoice, GeminiDescriber
+from .pairing import phone_link
 from .session import Session
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -42,17 +43,30 @@ class Hub:
 
     def __init__(self) -> None:
         self.clients: list[WebSocket] = []
+        self._broadcast_lock = asyncio.Lock()
 
     @property
     def active(self) -> WebSocket | None:
         return self.clients[-1] if self.clients else None
 
     async def broadcast(self, payload: dict) -> None:
-        for ws in list(self.clients):
-            try:
-                await ws.send_json({**payload, "active": ws is self.active})
-            except Exception:
-                self.drop(ws)
+        async with self._broadcast_lock:
+            for ws in list(self.clients):
+                try:
+                    await ws.send_json({**payload, "active": ws is self.active})
+                except Exception:
+                    self.drop(ws)
+
+    async def broadcast_frame(self, jpeg: bytes, sender: WebSocket) -> None:
+        """Mirror the active camera frame to viewer tabs without echoing it to the phone."""
+        async with self._broadcast_lock:
+            for ws in list(self.clients):
+                if ws is sender:
+                    continue
+                try:
+                    await ws.send_bytes(jpeg)
+                except Exception:
+                    self.drop(ws)
 
     def drop(self, ws: WebSocket) -> None:
         if ws in self.clients:
@@ -89,6 +103,11 @@ def health() -> dict:
             "history": {**session.history.status().to_json(), "writer": session.history_writer.stats()}}
 
 
+@app.get("/api/phone-link")
+def get_phone_link() -> dict:
+    return phone_link(settings.phone_public_url)
+
+
 @app.get("/api/keyframes/{key}.jpg")
 def keyframe(key: str) -> Response:
     data = session.keyframe(key)
@@ -123,6 +142,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
             if msg.get("bytes"):
                 if ws is not hub.active:
                     continue  # another tab owns the camera; this tab just watches
+                await hub.broadcast_frame(msg["bytes"], ws)
                 snap = await asyncio.to_thread(session.process_frame, msg["bytes"])
                 await hub.broadcast(snap)
             elif msg.get("text"):
@@ -159,3 +179,4 @@ async def ws_endpoint(ws: WebSocket) -> None:
         pass
     finally:
         hub.drop(ws)
+        await hub.broadcast(session.snapshot())

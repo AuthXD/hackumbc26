@@ -2,6 +2,8 @@
 
 **Before judges arrive (2 min)**
 - `npm run dev`, open http://localhost:5173 in Chrome, allow the camera, and press F11 for full screen.
+- If using a phone directly, start the trusted HTTPS tunnel, press **Connect phone**, paste the tunnel URL if it is
+  not already configured, scan the QR, allow the rear camera, and confirm the laptop says **Phone streaming**.
 - Put the red, yellow, green, and blue objects on the table. Check that the overlay labels all four at 90% or more.
   If not, use **Calibrate colors**.
 - Press **Reset** (`R`). Voice on. Laptop volume up.

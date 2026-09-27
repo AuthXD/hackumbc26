@@ -295,6 +295,10 @@ class PracticeEngine:
             error_type, headline = "wrong_object", f"Step {k + 1}: wrong object"
             observed_text = describe_observed(observed)
             fix = " ".join(undo) + f" Then: {step.description.instruction}"
+        elif correct and untouched and not unexpected:
+            error_type, headline = "incomplete_step", f"Step {k + 1} is not finished"
+            observed_text = describe_observed(observed)
+            fix = " ".join(f"Move {obj(i)} {to_where(expected.after[i])}." for i in sorted(untouched))
         else:
             error_type, headline = "extra_change", "Something else moved"
             observed_text = describe_observed(StepDelta(

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Overlay } from "./Overlay";
+import { PhoneCamera, PhoneLinkButton } from "./PhoneLink";
 import { SetupPanel } from "./SetupPanel";
 import { Simulator, type SimulatorHandle } from "./Simulator";
 import { speaker } from "./speech";
@@ -13,6 +14,7 @@ type Source = "camera" | "sim";
 
 const CAL_ORDER = ["red", "yellow", "green", "blue"];
 const DEFAULT_OBJECTS = "blue water bottle, brown wallet, green smartwatch, blue smartphone";
+const PHONE_MODE = new URLSearchParams(location.search).get("phone") === "1";
 
 const TRACKER_LABEL: Record<TrackerStatus, string> = {
   stable: "Stable",
@@ -26,12 +28,13 @@ export default function App() {
   const [source, setSource] = useState<Source>(() =>
     new URLSearchParams(location.search).has("sim") ? "sim" : "camera",
   );
-  const { videoRef, ready, error } = useCamera();
+  const { videoRef, ready, error } = useCamera(PHONE_MODE ? "environment" : undefined);
   const simRef = useRef<SimulatorHandle>(null);
   const [u, setU] = useState<ServerUpdate | null>(null);
   const [muted, setMuted] = useState(false);
   const [aspect, setAspect] = useState(4 / 3);
   const [fps, setFps] = useState(0);
+  const [remoteFrame, setRemoteFrame] = useState<string | null>(null);
   const [calibrating, setCalibrating] = useState<string | null>(null); // color being calibrated
   const [objectDescriptions, setObjectDescriptions] = useState(DEFAULT_OBJECTS);
   const frameTimes = useRef<number[]>([]);
@@ -47,13 +50,26 @@ export default function App() {
     }
     setU(m);
     speaker.useElevenLabs = !!m.integrations?.elevenlabs;
-    if (m.active !== false) m.events?.forEach((e) => speaker.say(e));
+    if (!PHONE_MODE && m.active !== false) m.events?.forEach((e) => speaker.say(e));
   }, []);
+
+  const onRemoteFrame = useCallback((jpeg: ArrayBuffer) => {
+    const next = URL.createObjectURL(new Blob([jpeg], { type: "image/jpeg" }));
+    setRemoteFrame((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => () => {
+    if (remoteFrame) URL.revokeObjectURL(remoteFrame);
+  }, [remoteFrame]);
 
   const { connection, send } = useFrameStream<ServerUpdate>(
     () => (source === "sim" ? simRef.current?.canvas ?? null : videoRef.current),
-    source === "sim" || ready,
+    (source === "sim" || ready) && (u?.active ?? true),
     onMessage,
+    onRemoteFrame,
   );
 
   const command = useCallback((action: string) => send({ type: "command", action }), [send]);
@@ -118,6 +134,11 @@ export default function App() {
     : undefined;
   const cameraProblem = source === "camera" && error;
 
+  if (PHONE_MODE) {
+    return <PhoneCamera videoRef={videoRef} connection={connection} ready={ready} error={error}
+      active={u?.active ?? true} />;
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -136,6 +157,7 @@ export default function App() {
           <span className={`pill conn-${connection}`}>
             {connection === "open" ? "Connected" : connection === "connecting" ? "Connecting…" : "Offline"}
           </span>
+          <PhoneLinkButton streaming={u?.active === false} />
           <div className="segmented" role="group" aria-label="Video source">
             <button className={source === "camera" ? "on" : ""} onClick={() => setSource("camera")}>
               Camera
@@ -258,7 +280,13 @@ export default function App() {
             className="camera-frame"
             style={{ aspectRatio: String(aspect), width: `min(100%, calc(var(--cam-h) * ${aspect}))` }}
           >
-            <video ref={videoRef} muted playsInline className="camera-media" hidden={source !== "camera"} />
+            <video ref={videoRef} muted playsInline className="camera-media"
+              hidden={source !== "camera" || (u?.active === false && !!remoteFrame)} />
+            {u?.active === false && remoteFrame && <img src={remoteFrame} alt="Live phone camera"
+              className="camera-media" onLoad={(event) => {
+                const image = event.currentTarget;
+                if (image.naturalWidth) setAspect(image.naturalWidth / image.naturalHeight);
+              }} />}
             {source === "sim" && <Simulator ref={simRef} zones={u?.zones ?? []} />}
             <Overlay scene={u?.scene ?? undefined} zones={u?.zones ?? []} activeZones={activeZones} />
             {calibrating && (

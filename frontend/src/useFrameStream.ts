@@ -29,6 +29,7 @@ export function useFrameStream<T>(
   getSource: () => FrameSource | null,
   enabled: boolean,
   onMessage: (msg: T) => void,
+  onFrame?: (jpeg: ArrayBuffer) => void,
 ) {
   const getSourceRef = useRef(getSource);
   getSourceRef.current = getSource;
@@ -36,6 +37,8 @@ export function useFrameStream<T>(
   const [connection, setConnection] = useState<Connection>("connecting");
   const onMessageRef = useRef(onMessage);
   onMessageRef.current = onMessage;
+  const onFrameRef = useRef(onFrame);
+  onFrameRef.current = onFrame;
 
   useEffect(() => {
     let closedByUs = false;
@@ -49,6 +52,7 @@ export function useFrameStream<T>(
       ws.onopen = () => setConnection("open");
       ws.onmessage = (ev) => {
         if (typeof ev.data === "string") onMessageRef.current(JSON.parse(ev.data) as T);
+        else if (ev.data instanceof ArrayBuffer) onFrameRef.current?.(ev.data);
       };
       ws.onclose = () => {
         if (wsRef.current !== ws) return; // a replaced socket closing late must not flip the status

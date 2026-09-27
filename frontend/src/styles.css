@@ -61,6 +61,37 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
 .segmented button.on { background: var(--panel-2); color: var(--text); }
 .ghost { background: transparent; border: 1px solid var(--line); border-radius: 10px; padding: 7px 14px; font-size: 14px; color: var(--muted); }
 
+/* ---------- phone camera pairing ---------- */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px;
+  background: rgba(3, 6, 10, 0.82); backdrop-filter: blur(5px);
+}
+.phone-link-modal {
+  position: relative; width: min(520px, 100%); max-height: calc(100vh - 40px); overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 24px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+}
+.phone-link-modal h2 { margin: 0 36px 6px 0; font-size: 28px; }
+.phone-link-modal > p { color: var(--muted); line-height: 1.45; }
+.modal-close { position: absolute; top: 12px; right: 14px; border: 0; background: transparent; font-size: 30px; color: var(--muted); }
+.qr-card { width: fit-content; margin: 18px auto; padding: 14px; border-radius: 12px; background: white; line-height: 0; }
+.phone-url { display: grid; gap: 6px; color: var(--muted); font-size: 14px; }
+.phone-url input { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+.phone-warning, .phone-ready { border-radius: 10px; padding: 10px 12px; }
+.phone-warning { color: #fde68a !important; background: color-mix(in srgb, var(--warning) 12%, transparent); }
+.phone-ready { color: var(--success) !important; background: color-mix(in srgb, var(--success) 12%, transparent); }
+.phone-link-modal code { color: var(--text); }
+
+.phone-camera-page { min-height: 100dvh; display: flex; flex-direction: column; gap: 14px; padding: 16px; }
+.phone-camera-heading { display: flex; align-items: center; gap: 12px; }
+.phone-camera-heading h1 { margin: 0; font-size: 24px; }
+.phone-camera-heading p { margin: 2px 0 0; color: var(--muted); }
+.phone-state { width: 15px; height: 15px; border-radius: 50%; background: var(--warning); box-shadow: 0 0 0 5px color-mix(in srgb, var(--warning) 18%, transparent); }
+.phone-state.ready { background: var(--success); box-shadow: 0 0 0 5px color-mix(in srgb, var(--success) 18%, transparent); }
+.phone-preview { width: 100%; min-height: 0; flex: 1; object-fit: contain; border-radius: 14px; background: #000; border: 1px solid var(--line); }
+.phone-camera-error { padding: 14px; border-radius: 12px; background: color-mix(in srgb, var(--error) 12%, var(--panel)); color: var(--error); }
+.phone-camera-error p, .phone-hint { margin: 6px 0 0; color: var(--muted); }
+
 /* ---------- controls ---------- */
 .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .btn {

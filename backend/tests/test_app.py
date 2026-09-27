@@ -30,6 +30,22 @@ def test_session_calibration_updates_color_range():
     assert s.reset_colors()["notice"] == "Colors reset to defaults."
 
 
+def test_newest_camera_relays_frames_and_disconnect_returns_ownership():
+    jpeg = frame(START)
+    with TestClient(app) as client, client.websocket_connect("/ws") as laptop:
+        assert laptop.receive_json()["active"] is True
+        with client.websocket_connect("/ws") as phone:
+            assert laptop.receive_json()["active"] is False
+            assert phone.receive_json()["active"] is True
+
+            phone.send_bytes(jpeg)
+            assert laptop.receive_bytes() == jpeg
+            assert laptop.receive_json()["active"] is False
+            assert phone.receive_json()["active"] is True
+
+        assert laptop.receive_json()["active"] is True
+
+
 def test_speak_without_key_returns_503_so_browser_falls_back(monkeypatch):
     from app import main
 

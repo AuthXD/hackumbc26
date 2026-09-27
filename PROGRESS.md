@@ -1,5 +1,19 @@
 # TeachBack — Progress Log
 
+### Phone camera pairing and partial-step correction (2026-09-26)
+
+- Fixed a practice-engine hole for a learned step that moves multiple objects at once. Completing only some of the
+  expected moves now reports **Step N is not finished**, describes the moves that did happen, and names each
+  remaining move. It no longer says **Something else moved / Nothing changed**.
+- Added **Connect phone** with a generated QR, validated/editable URL, explicit HTTP-versus-HTTPS guidance, and a
+  stripped-down `?phone=1` rear-camera page. Vite listens on the LAN; an optional `TEACHBACK_PHONE_URL` supplies a
+  trusted tunnel URL required by mobile browsers.
+- The newest WebSocket page owns capture. Phone JPEGs are relayed to laptop viewers, laptop capture pauses while it
+  watches, and ownership returns after disconnect. Browser verification showed the QR, phone page, **Phone
+  streaming** state, and a relayed live simulator frame on the laptop.
+- Verification: focused regression failed before the engine fix and passed after it; 151 tests passed using a
+  repository-local pytest temp folder; TypeScript typecheck and production build passed.
+
 ## Plan (short)
 
 | # | Milestone | Status |

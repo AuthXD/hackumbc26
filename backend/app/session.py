@@ -650,6 +650,10 @@ class Session:
     # -- output ---------------------------------------------------------------------------------
 
     def snapshot(self, events: list[Event] | None = None) -> dict:
+        with self.lock:
+            return self._snapshot(events)
+
+    def _snapshot(self, events: list[Event] | None = None) -> dict:
         proc = self.current_procedure()
         return {
             "type": "update",

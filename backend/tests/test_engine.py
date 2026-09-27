@@ -151,6 +151,21 @@ def test_correct_object_to_wrong_zone_then_fixed():
     assert eng.state.status == "step_complete" and eng.state.expected_step_index == 1
 
 
+def test_partially_completed_multi_object_step_names_what_remains():
+    rec = teach(dict(red="A", green="A"), dict(red="B", green="C"))
+    eng = PracticeEngine(rec.procedure())
+    eng.on_stable(layout(red="A", green="A"))
+
+    events = eng.on_stable(layout(red="A", green="C"))
+
+    assert eng.state.status == "error"
+    assert eng.state.error_type == "incomplete_step"
+    assert eng.state.headline == "Step 1 is not finished"
+    assert eng.state.observed_description == "The green object moved from Zone A to Zone C."
+    assert eng.state.fix_hint == "Move the red object to Zone B."
+    assert len(errors(events)) == 1
+
+
 def test_undo_error_then_complete_expected_step_and_continue():
     eng = PracticeEngine(learned())
     start = layout(**START)

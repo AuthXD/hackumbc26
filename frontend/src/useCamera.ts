@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 /** Starts the webcam once and exposes the <video> ref plus any permission/device error. */
-export function useCamera() {
+export function useCamera(facingMode?: "user" | "environment") {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -10,7 +10,14 @@ export function useCamera() {
     let stream: MediaStream | null = null;
     let cancelled = false;
     navigator.mediaDevices
-      .getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false })
+      .getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          ...(facingMode ? { facingMode: { ideal: facingMode } } : {}),
+        },
+        audio: false,
+      })
       .then(async (s) => {
         if (cancelled) {
           s.getTracks().forEach((t) => t.stop());
@@ -28,7 +35,7 @@ export function useCamera() {
       cancelled = true;
       stream?.getTracks().forEach((t) => t.stop());
     };
-  }, []);
+  }, [facingMode]);
 
   return { videoRef, ready, error };
 }

@@ -119,6 +119,8 @@ class Settings:
     tiger_statement_timeout_ms: int = 5000  # per transaction
     history_queue_size: int = 32  # bounded; overflow is reported, never silent
     history_close_timeout: float = 5.0  # seconds to drain accepted events at shutdown
+    # Trusted HTTPS tunnel used by the phone-camera QR. LAN HTTP is still shown as a view-only fallback.
+    phone_public_url: str = field(default_factory=lambda: os.getenv("TEACHBACK_PHONE_URL", "").strip())
 
 
 settings = Settings()

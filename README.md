@@ -35,6 +35,25 @@ Then open **http://localhost:5173** in Chrome or Edge and allow camera access.
 `npm run dev` starts the API on :8000 and the web app on :5173, which proxies `/api` and `/ws`. Stop both with
 Ctrl+C, or run `npm run stop` if a previous run left a port busy.
 
+### Use a phone as the camera
+
+Press **Connect phone** on the laptop. TeachBack shows a QR and a phone-only page that requests the rear camera.
+The newest connected page owns the camera, while the laptop keeps the controls and mirrors the phone's live JPEG
+frames with the detection overlay. Closing the phone page returns camera control to the laptop.
+
+Mobile browsers require a trusted HTTPS origin for live camera access. The automatically discovered LAN URL is
+useful for checking connectivity, but its `http://` QR cannot open the camera on iPhone or normal Android Chrome.
+For a direct phone connection, run a trusted HTTPS tunnel to `http://localhost:5173`, then either paste its URL into
+the **Phone URL** field or set `TEACHBACK_PHONE_URL` in `.env` and restart. For example, if `cloudflared` is already
+installed:
+
+```bash
+cloudflared tunnel --url http://localhost:5173
+```
+
+Using a public tunnel sends camera frames through that tunnel provider. For a fully local path, expose the phone as
+a Windows webcam with Camo or DroidCam and use the normal **Camera** source instead.
+
 No camera handy? Click **Simulator** in the header, or open http://localhost:5173/?sim. You get a synthetic
 tabletop whose pixels go through exactly the same vision pipeline.
 
@@ -253,6 +272,7 @@ The local LocateAnything benchmark and constrained beta decision are documented 
 - Stacking is inferred from a single 2D view. Touching objects can look stacked. Objects that haven't moved since
   the last settled state are never newly counted as stacked, which removes most false positives.
 - An object hidden inside an opaque container counts as occluded. Use open or marked container areas.
-- The newest browser tab owns the camera. Other tabs just watch.
+- The newest browser tab owns the camera. Viewer tabs receive its live JPEG frames and the shared state.
 - Tested with the simulator and synthetic frames. Tune real webcam lighting with the calibration step before judging.
-- iPhone Safari needs HTTPS for camera access and isn't set up. The laptop webcam is the supported path.
+- Direct iPhone/Android browser capture needs a trusted HTTPS tunnel. The QR dialog reports when its current link is
+  only insecure LAN HTTP instead of pretending the camera will work.
