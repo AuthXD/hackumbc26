@@ -30,6 +30,7 @@ export function useFrameStream<T>(
   enabled: boolean,
   onMessage: (msg: T) => void,
   onFrame?: (jpeg: ArrayBuffer) => void,
+  hello?: object,
 ) {
   const getSourceRef = useRef(getSource);
   getSourceRef.current = getSource;
@@ -39,6 +40,8 @@ export function useFrameStream<T>(
   onMessageRef.current = onMessage;
   const onFrameRef = useRef(onFrame);
   onFrameRef.current = onFrame;
+  const helloRef = useRef(hello);
+  helloRef.current = hello;
 
   useEffect(() => {
     let closedByUs = false;
@@ -49,7 +52,11 @@ export function useFrameStream<T>(
       const ws = new WebSocket(`${proto}://${location.host}/ws`);
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
-      ws.onopen = () => setConnection("open");
+      ws.onopen = () => {
+        setConnection("open");
+        // Tell the server what this page is (laptop webcam/simulator or phone) on every (re)connect.
+        if (helloRef.current) ws.send(JSON.stringify({ type: "hello", ...helloRef.current }));
+      };
       ws.onmessage = (ev) => {
         if (typeof ev.data === "string") onMessageRef.current(JSON.parse(ev.data) as T);
         else if (ev.data instanceof ArrayBuffer) onFrameRef.current?.(ev.data);

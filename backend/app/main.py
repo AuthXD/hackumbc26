@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -13,6 +14,7 @@ from .config import settings
 from .integrations import ElevenLabsVoice, GeminiDescriber
 from .pairing import phone_link
 from .session import Session
+from .sources import SourceRegistry
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("teachback")
@@ -30,7 +32,9 @@ async def lifespan(app: FastAPI):
         loop.call_soon_threadsafe(lambda: asyncio.create_task(hub.broadcast(session.snapshot())))
 
     session.history_writer.on_change = history_changed
+    watchdog = asyncio.create_task(hub.watch_sources())
     yield
+    watchdog.cancel()
     session.history_writer.on_change = None
     await asyncio.to_thread(session.close)  # drains accepted history events within a bounded timeout
 
@@ -39,23 +43,44 @@ app = FastAPI(title="TeachBack", lifespan=lifespan)
 
 
 class Hub:
-    """Connected browser tabs. The newest tab is the active camera; every tab receives updates."""
+    """Connected pages. The newest page that is *delivering valid frames* owns the camera (see sources.py);
+    every page receives updates plus its own flags (may it stream, is it the owner, should it speak)."""
 
     def __init__(self) -> None:
         self.clients: list[WebSocket] = []
+        self.sources = SourceRegistry()
         self._broadcast_lock = asyncio.Lock()
 
-    @property
-    def active(self) -> WebSocket | None:
-        return self.clients[-1] if self.clients else None
+    def add(self, ws: WebSocket) -> None:
+        self.clients.append(ws)
+        self.sources.connect(ws)
+
+    def camera_signature(self) -> tuple:
+        now = time.monotonic()
+        owner = self.sources.owner(now)
+        return (id(owner.key) if owner else None, self.sources.phone_state(now),
+                tuple(self.sources.may_stream(ws, now) for ws in self.clients))
 
     async def broadcast(self, payload: dict) -> None:
         async with self._broadcast_lock:
+            now = time.monotonic()
+            camera = self.sources.status(now)
             for ws in list(self.clients):
                 try:
-                    await ws.send_json({**payload, "active": ws is self.active})
+                    await ws.send_json({**payload, "camera": camera, **self.sources.client_view(ws, now)})
                 except Exception:
                     self.drop(ws)
+
+    async def watch_sources(self, interval: float = 0.5) -> None:
+        """A source that stops sending without disconnecting (phone locked, tab hidden) loses the camera;
+        tell every page so the laptop resumes its own feed."""
+        last = self.camera_signature()
+        while True:
+            await asyncio.sleep(interval)
+            current = self.camera_signature()
+            if current != last:
+                last = current
+                await self.broadcast(session.snapshot())
 
     async def broadcast_frame(self, jpeg: bytes, sender: WebSocket) -> None:
         """Mirror the active camera frame to viewer tabs without echoing it to the phone."""
@@ -71,6 +96,7 @@ class Hub:
     def drop(self, ws: WebSocket) -> None:
         if ws in self.clients:
             self.clients.remove(ws)
+        self.sources.disconnect(ws)
 
 
 hub = Hub()
@@ -132,7 +158,7 @@ async def speak(req: SpeakRequest) -> Response:
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
     await ws.accept()
-    hub.clients.append(ws)
+    hub.add(ws)
     await hub.broadcast(session.snapshot())
     try:
         while True:
@@ -140,10 +166,16 @@ async def ws_endpoint(ws: WebSocket) -> None:
             if msg.get("type") == "websocket.disconnect":
                 break
             if msg.get("bytes"):
-                if ws is not hub.active:
-                    continue  # another tab owns the camera; this tab just watches
-                await hub.broadcast_frame(msg["bytes"], ws)
-                snap = await asyncio.to_thread(session.process_frame, msg["bytes"])
+                data = msg["bytes"]
+                if not hub.sources.frame_received(ws, data, time.monotonic()):
+                    continue  # another page owns the camera (or this is not a JPEG); this page just watches
+                kind = hub.sources.source_kind(ws)
+                snap = await asyncio.to_thread(session.process_frame, data, None, kind)
+                if snap.get("error"):
+                    hub.sources.frame_invalid(ws)  # undecodable: never counts as streaming
+                    snap = session.snapshot()
+                else:
+                    await hub.broadcast_frame(data, ws)
                 await hub.broadcast(snap)
             elif msg.get("text"):
                 try:
@@ -151,7 +183,16 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 except json.JSONDecodeError:
                     continue
                 kind = cmd.get("type")
-                if kind == "command":
+                if kind == "hello":
+                    hub.sources.hello(ws, str(cmd.get("role", "")), str(cmd.get("kind", "")))
+                    snap = session.snapshot()
+                elif kind == "source":
+                    hub.sources.set_kind(ws, str(cmd.get("kind", "")))
+                    snap = session.snapshot()
+                elif kind == "camera_status":
+                    hub.sources.camera_status(ws, str(cmd.get("state", "")), str(cmd.get("message", "")))
+                    snap = session.snapshot()
+                elif kind == "command":
                     snap = await asyncio.to_thread(session.command, str(cmd.get("action", "")))
                 elif kind == "calibrate":
                     snap = session.calibrate(str(cmd.get("color")), float(cmd.get("x", -1)), float(cmd.get("y", -1)))

@@ -96,7 +96,7 @@ class Session:
 
     # -- frames ---------------------------------------------------------------------------------
 
-    def process_frame(self, jpeg: bytes, now: float | None = None) -> dict:
+    def process_frame(self, jpeg: bytes, now: float | None = None, source: str = "webcam") -> dict:
         now = time.time() if now is None else now
         t0 = time.perf_counter()
         frame = decode_jpeg(jpeg)

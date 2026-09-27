@@ -1,5 +1,6 @@
 import { useEffect, useState, type RefObject } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import type { CameraStatus, ServerUpdate } from "./types";
 
 type PhoneLink = {
   url: string | null;
@@ -32,7 +33,14 @@ function asPhoneUrl(value: string): string | null {
   }
 }
 
-export function PhoneLinkButton({ streaming }: { streaming: boolean }) {
+const PHONE_LABEL: Record<CameraStatus["phone"], string> = {
+  disconnected: "Connect phone",
+  connected: "Phone connected — no video yet",
+  streaming: "Phone streaming",
+  error: "Phone camera error",
+};
+
+export function PhoneLinkButton({ phone }: { phone: CameraStatus["phone"] }) {
   const [open, setOpen] = useState(false);
   const [link, setLink] = useState<PhoneLink | null>(null);
   const [draft, setDraft] = useState("");
@@ -57,8 +65,8 @@ export function PhoneLinkButton({ streaming }: { streaming: boolean }) {
   const secure = url?.startsWith("https://") ?? false;
 
   return <>
-    <button className="ghost" onClick={() => setOpen(true)}>
-      {streaming ? "Phone streaming" : "Connect phone"}
+    <button className={`ghost phone-${phone}`} onClick={() => setOpen(true)}>
+      {PHONE_LABEL[phone]}
     </button>
     {open && <div className="modal-backdrop" role="presentation" onMouseDown={() => setOpen(false)}>
       <section className="phone-link-modal" role="dialog" aria-modal="true" aria-labelledby="phone-link-title"
@@ -83,33 +91,91 @@ export function PhoneLinkButton({ streaming }: { streaming: boolean }) {
   </>;
 }
 
+// Long side / short side of the landmark rectangle on the mat (measured on IMG_4738: ~1220 x 2990 px).
+const MAT_SHORT_OVER_LONG = 0.41;
+const LANDMARKS = ["Creature", "Frog", "Potion", "Logo"];
+
+/** Approximate framing guide: where the mat and its four corner landmarks should sit in the picture. */
+function FramingGuide({ aspect, corners }: { aspect: number; corners: [number, number][] | null }) {
+  // Fit the mat's long axis along the picture's long axis, leaving a margin.
+  const portrait = aspect < 1;
+  const long = 0.84;
+  const short = Math.min(0.84, long * MAT_SHORT_OVER_LONG * (portrait ? 1 / aspect : aspect));
+  const [w, h] = portrait ? [short, long] : [long, short];
+  const x0 = (1 - w) / 2;
+  const y0 = (1 - h) / 2;
+  const guide: [number, number][] = [[x0, y0], [x0 + w, y0], [x0 + w, y0 + h], [x0, y0 + h]];
+  return <svg className="phone-guide" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+    <polygon points={guide.map(([x, y]) => `${x * 100},${y * 100}`).join(" ")} className="guide-mat" />
+    {corners && <polygon points={corners.map(([x, y]) => `${x * 100},${y * 100}`).join(" ")} className="guide-tracked" />}
+    {guide.map(([x, y], i) => <g key={i}>
+      <circle cx={x * 100} cy={y * 100} r="2.2" className="guide-corner" />
+      <text x={x * 100 + (x < 0.5 ? 3 : -3)} y={y * 100 + (y < 0.5 ? 5 : -3)}
+        textAnchor={x < 0.5 ? "start" : "end"} className="guide-label">{i + 1} {LANDMARKS[i]}</text>
+    </g>)}
+  </svg>;
+}
+
 export function PhoneCamera({
   videoRef,
   connection,
   ready,
   error,
-  active,
+  u,
+  send,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>;
   connection: "connecting" | "open" | "closed";
   ready: boolean;
   error: string | null;
-  active: boolean;
+  u: ServerUpdate | null;
+  send: (payload: object) => void;
 }) {
+  const [aspect, setAspect] = useState(9 / 16);
+  // Tell the laptop what the camera is doing, so it never claims "streaming" on our behalf.
+  useEffect(() => {
+    if (connection !== "open") return;
+    send({ type: "camera_status", state: error ? "error" : ready ? "ready" : "starting", message: error ?? "" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connection, ready, error]);
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onMeta = () => video.videoWidth && setAspect(video.videoWidth / video.videoHeight);
+    video.addEventListener("loadedmetadata", onMeta);
+    return () => video.removeEventListener("loadedmetadata", onMeta);
+  }, [videoRef]);
+
+  const streaming = u?.owner === true && u.camera?.phone === "streaming";
+  const status = error ? "Camera unavailable"
+    : connection !== "open" ? "Connecting to laptop…"
+    : !ready ? "Waiting for camera permission…"
+    : streaming ? "Streaming to laptop"
+    : u?.active === false ? "Another phone is the active camera"
+    : "Starting stream…";
+  const mat = u?.mat;
+  const matLine = !streaming ? "" : !mat || mat.state === "off" ? ""
+    : mat.state === "uncalibrated" ? "Mat not calibrated yet. Calibrate it on the laptop."
+    : mat.message;
+
   return <main className="phone-camera-page">
     <div className="phone-camera-heading">
-      <span className={`phone-state ${connection === "open" && ready && active ? "ready" : ""}`} />
+      <span className={`phone-state ${streaming ? "ready" : ""}`} />
       <div>
         <h1>TeachBack camera</h1>
-        <p>{error ? "Camera unavailable" : connection !== "open" ? "Connecting to laptop…"
-          : !ready ? "Waiting for camera permission…" : active ? "Streaming to laptop" : "Another camera is active"}</p>
+        <p>{status}</p>
       </div>
     </div>
-    <video ref={videoRef} muted playsInline className="phone-preview" />
+    <div className="phone-preview-wrap">
+      <video ref={videoRef} muted playsInline className="phone-preview" />
+      {ready && !error && <FramingGuide aspect={aspect} corners={streaming && mat?.state === "tracking" ? mat.corners : null} />}
+    </div>
+    {matLine && <p className={`phone-mat mat-${mat?.state}`}>{matLine}</p>}
     {error && <section className="phone-camera-error">
       <strong>{error}</strong>
       {!window.isSecureContext && <p>Live camera access needs a trusted HTTPS link. Return to the laptop and use its secure QR.</p>}
     </section>}
-    <p className="phone-hint">Use the rear camera. Keep the black mat inside the frame and hold still while scanning.</p>
+    <p className="phone-hint">Use the rear camera. Fit the mat inside the dashed guide with all four corner stickers
+      visible (1 Creature, 2 Frog, 3 Potion, 4 Logo). Hold still while scanning.</p>
   </main>;
 }

@@ -50,7 +50,8 @@ export default function App() {
     }
     setU(m);
     speaker.useElevenLabs = !!m.integrations?.elevenlabs;
-    if (!PHONE_MODE && m.active !== false) m.events?.forEach((e) => speaker.say(e));
+    // Exactly one laptop page speaks (the server picks it); the phone never does.
+    if (!PHONE_MODE && m.speaker !== false) m.events?.forEach((e) => speaker.say(e));
   }, []);
 
   const onRemoteFrame = useCallback((jpeg: ArrayBuffer) => {
@@ -70,7 +71,23 @@ export default function App() {
     (source === "sim" || ready) && (u?.active ?? true),
     onMessage,
     onRemoteFrame,
+    PHONE_MODE ? { role: "phone" } : { role: "laptop", kind: source === "sim" ? "sim" : "webcam" },
   );
+
+  // The server evaluates whichever page owns the camera; tell it when this laptop switches picture.
+  useEffect(() => {
+    if (!PHONE_MODE && connection === "open") send({ type: "source", kind: source === "sim" ? "sim" : "webcam" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, connection]);
+
+  // A relayed phone picture is only shown while the phone really owns the camera; drop it otherwise.
+  const phoneOwns = u?.camera?.owner === "phone";
+  useEffect(() => {
+    if (!phoneOwns) setRemoteFrame((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+      return null;
+    });
+  }, [phoneOwns]);
 
   const command = useCallback((action: string) => send({ type: "command", action }), [send]);
   const detector = u?.detector;
@@ -135,8 +152,7 @@ export default function App() {
   const cameraProblem = source === "camera" && error;
 
   if (PHONE_MODE) {
-    return <PhoneCamera videoRef={videoRef} connection={connection} ready={ready} error={error}
-      active={u?.active ?? true} />;
+    return <PhoneCamera videoRef={videoRef} connection={connection} ready={ready} error={error} u={u} send={send} />;
   }
 
   return (
@@ -157,7 +173,7 @@ export default function App() {
           <span className={`pill conn-${connection}`}>
             {connection === "open" ? "Connected" : connection === "connecting" ? "Connecting…" : "Offline"}
           </span>
-          <PhoneLinkButton streaming={u?.active === false} />
+          <PhoneLinkButton phone={u?.camera?.phone ?? "disconnected"} />
           <div className="segmented" role="group" aria-label="Video source">
             <button className={source === "camera" ? "on" : ""} onClick={() => setSource("camera")}>
               Camera
@@ -281,8 +297,8 @@ export default function App() {
             style={{ aspectRatio: String(aspect), width: `min(100%, calc(var(--cam-h) * ${aspect}))` }}
           >
             <video ref={videoRef} muted playsInline className="camera-media"
-              hidden={source !== "camera" || (u?.active === false && !!remoteFrame)} />
-            {u?.active === false && remoteFrame && <img src={remoteFrame} alt="Live phone camera"
+              hidden={source !== "camera" || (phoneOwns && !!remoteFrame)} />
+            {phoneOwns && remoteFrame && <img src={remoteFrame} alt="Live phone camera"
               className="camera-media" onLoad={(event) => {
                 const image = event.currentTarget;
                 if (image.naturalWidth) setAspect(image.naturalWidth / image.naturalHeight);

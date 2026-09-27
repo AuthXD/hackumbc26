@@ -164,6 +164,32 @@ export type ServerUpdate = {
   colors?: Record<string, string>;
   integrations?: { gemini: boolean; elevenlabs: boolean };
   notice?: string;
-  active?: boolean;
+  active?: boolean; // this page may send camera frames
+  owner?: boolean; // this page's frames are the ones being evaluated
+  speaker?: boolean; // this page speaks coaching aloud
+  camera?: CameraStatus;
+  mat?: MatStatus;
   error?: string;
+};
+
+export type CameraStatus = {
+  owner: "webcam" | "sim" | "phone" | "none";
+  phone: "disconnected" | "connected" | "streaming" | "error";
+  phoneError: string;
+  phoneFrames: number;
+};
+
+export type MatState = "off" | "uncalibrated" | "tracking" | "unsteady" | "lost" | "recalibrate";
+
+export type MatStatus = {
+  source: string;
+  state: MatState;
+  message: string;
+  calibrated: boolean;
+  trustworthy: boolean; // tracking is good enough to update Teach/Practice/Setup Check
+  corners: [number, number][] | null; // tracked TL, TR, BR, BL in the source frame (normalized)
+  viewSeq: number; // increments when a new stabilized mat image is available
+  canonicalAspect: number | null; // width / height of the stabilized mat image
+  band: number; // fraction of each edge excluded as the landmark band
+  metrics: { inliers: number; reprojError: number | null; motion: number | null } | null;
 };

@@ -30,20 +30,39 @@ def test_session_calibration_updates_color_range():
     assert s.reset_colors()["notice"] == "Colors reset to defaults."
 
 
-def test_newest_camera_relays_frames_and_disconnect_returns_ownership():
+def test_phone_takes_the_camera_only_after_its_first_valid_frame_and_disconnect_returns_it():
     jpeg = frame(START)
     with TestClient(app) as client, client.websocket_connect("/ws") as laptop:
-        assert laptop.receive_json()["active"] is True
+        first = laptop.receive_json()
+        assert first["active"] is True and first["camera"]["phone"] == "disconnected"
         with client.websocket_connect("/ws") as phone:
-            assert laptop.receive_json()["active"] is False
-            assert phone.receive_json()["active"] is True
+            joined = laptop.receive_json()
+            phone.receive_json()
+            phone.send_json({"type": "hello", "role": "phone"})
+            connected = laptop.receive_json()
+            phone.receive_json()
+            # Connected, no frames yet: the laptop keeps its camera and nobody claims "streaming".
+            assert joined["active"] is True and connected["active"] is True
+            assert connected["camera"]["phone"] == "connected" and connected["camera"]["owner"] == "none"
+
+            phone.send_bytes(b"not a jpeg" * 20)  # garbage never takes the camera
+            phone.send_json({"type": "camera_status", "state": "error", "message": "NotAllowedError"})
+            errored = laptop.receive_json()
+            phone.receive_json()
+            assert errored["camera"]["phone"] == "error" and errored["active"] is True
 
             phone.send_bytes(jpeg)
-            assert laptop.receive_bytes() == jpeg
-            assert laptop.receive_json()["active"] is False
-            assert phone.receive_json()["active"] is True
+            assert laptop.receive_bytes() == jpeg  # binary JPEG relay to the laptop
+            streaming = laptop.receive_json()
+            mine = phone.receive_json()
+            assert streaming["camera"] == {"owner": "phone", "phone": "streaming", "phoneError": "", "phoneFrames": 1}
+            assert streaming["active"] is False and streaming["speaker"] is True
+            assert mine["owner"] is True and mine["speaker"] is False
+            assert {o["id"] for o in streaming["scene"]["objects"]} == {"red", "blue", "yellow", "green"}
 
-        assert laptop.receive_json()["active"] is True
+        back = laptop.receive_json()
+        assert back["active"] is True and back["camera"]["phone"] == "disconnected"
+        assert back["camera"]["owner"] == "none"
 
 
 def test_speak_without_key_returns_503_so_browser_falls_back(monkeypatch):
