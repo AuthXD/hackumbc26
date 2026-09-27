@@ -136,9 +136,9 @@ class Session:
             scene = analyze_frame(small, self.vision_active, now)
             scene = suppress_static_stacks(scene, self.reference_scene, self.vision_active)
             motion = self.meter.update(small)
-            if untrusted:  # camera settling / moving / a corner covered: show, but never commit
-                motion = float("inf")
-            result = self.tracker.update(scene, motion, now)
+            # Camera settling / moving / a corner covered: show, but never commit.
+            result = self.tracker.update(scene, float("inf") if untrusted else motion, now)
+            result.motion = motion  # snapshots are strict JSON: the browser rejects Infinity
             events: list[Event] = []
             if result.new_stable is not None:
                 self.reference_scene = result.new_stable

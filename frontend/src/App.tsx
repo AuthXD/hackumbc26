@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  addPoint, calibrationReply, matDisplay, MatCalibrationBar, MatChip, MatClickLayer, MatUnavailable, RawQuad,
+  StabilizedMat, undoPoint, type Pt,
+} from "./MatView";
 import { Overlay } from "./Overlay";
 import { PhoneCamera, PhoneLinkButton } from "./PhoneLink";
 import { SetupPanel } from "./SetupPanel";
@@ -38,6 +42,13 @@ export default function App() {
   const [remoteFrame, setRemoteFrame] = useState<string | null>(null);
   const [calibrating, setCalibrating] = useState<string | null>(null); // color being calibrated
   const [objectDescriptions, setObjectDescriptions] = useState(DEFAULT_OBJECTS);
+  const [matPoints, setMatPoints] = useState<Pt[] | null>(null); // null = not calibrating the mat
+  const [matSave, setMatSave] = useState<{ notice: string; at: number } | null>(null);
+  const [matError, setMatError] = useState<string | null>(null);
+  const [matSeqAt, setMatSeqAt] = useState(0); // when the last new stabilized picture was announced
+  const [matViewFailed, setMatViewFailed] = useState(-1); // viewSeq whose image failed to load
+  const [clock, setClock] = useState(() => performance.now());
+  const matSeq = useRef(-1);
   const frameTimes = useRef<number[]>([]);
 
   const onMessage = useCallback((m: ServerUpdate) => {
@@ -48,6 +59,10 @@ export default function App() {
       times.push(now);
       frameTimes.current = times;
       setFps(times.length / 2);
+    }
+    if (m.mat && m.mat.viewSeq !== matSeq.current) {
+      matSeq.current = m.mat.viewSeq;
+      setMatSeqAt(performance.now());
     }
     setU(m);
     speaker.useElevenLabs = !!m.integrations?.elevenlabs;
@@ -115,7 +130,7 @@ export default function App() {
     onMeta();
     video.addEventListener("loadedmetadata", onMeta);
     return () => video.removeEventListener("loadedmetadata", onMeta);
-  }, [source, ready, videoRef]);
+  }, [source, ready, videoRef, phoneOwns]);
 
   const mode = u?.mode ?? "idle";
   const setupMode = u?.workspace === "setup";
@@ -140,7 +155,57 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [command, setupMode]);
 
-  const view = statusView(u);
+  // Mat stabilization applies to real cameras only (laptop webcam or phone), never the simulator.
+  const cameraFeed = !PHONE_MODE && (phoneOwns || source === "camera");
+  const mat = u?.mat;
+  const matActive = cameraFeed && !!mat && mat.state !== "off" && mat.state !== "uncalibrated";
+  useEffect(() => {
+    if (!matActive) return;
+    const id = window.setInterval(() => setClock(performance.now()), 500);
+    return () => window.clearInterval(id);
+  }, [matActive]);
+  const display = matDisplay(mat, { cameraFeed, live: connection === "open", viewAgeMs: clock - matSeqAt });
+  const calibratingMat = matPoints !== null;
+  const stabilized = display.view === "stabilized" && !calibratingMat && !!mat && matViewFailed !== mat.viewSeq;
+  const frameAspect = stabilized && mat?.canonicalAspect ? mat.canonicalAspect : aspect;
+
+  useEffect(() => {
+    if (!cameraFeed) setMatPoints(null);
+  }, [cameraFeed]);
+
+  // The backend replies to mat_calibrate through its notice line; keep the clicks if it rejects them.
+  useEffect(() => {
+    if (!matSave) return;
+    const reply = calibrationReply(matSave.notice, u?.notice, performance.now() - matSave.at);
+    if (!reply) {
+      const id = window.setTimeout(() => setClock(performance.now()), 500);
+      return () => window.clearTimeout(id);
+    }
+    setMatSave(null);
+    if (reply.ok) {
+      setMatPoints(null);
+      setMatError(null);
+    } else setMatError(reply.error);
+  }, [u, clock, matSave]);
+
+  const startMatCalibration = () => {
+    setCalibrating(null);
+    setMatError(null);
+    setMatSave(null);
+    setMatPoints([]);
+  };
+  const saveMatCalibration = () => {
+    if (matPoints?.length !== 4) return;
+    setMatError(null);
+    setMatSave({ notice: u?.notice ?? "", at: performance.now() });
+    send({ type: "mat_calibrate", points: matPoints });
+  };
+  const editMatPoints = (next: Pt[]) => {
+    setMatError(null);
+    setMatPoints(next);
+  };
+
+  const view = statusView(u, display);
   const tracker = u?.tracker;
   // During practice, highlight the zone(s) the expected step should end in.
   const expectedStep =
@@ -186,9 +251,21 @@ export default function App() {
           </div>
           <button
             className="ghost"
-            disabled={semantic}
+            disabled={!cameraFeed}
+            aria-pressed={calibratingMat}
+            title={!cameraFeed ? "The simulator does not need mat calibration" : undefined}
+            onClick={() => (calibratingMat ? setMatPoints(null) : startMatCalibration())}
+          >
+            {calibratingMat ? "Cancel mat calibration" : mat?.calibrated ? "Recalibrate mat" : "Calibrate mat"}
+          </button>
+          <button
+            className="ghost"
+            disabled={semantic || display.blocksVerdict}
             aria-pressed={!!calibrating}
-            onClick={() => setCalibrating((c) => (c ? null : CAL_ORDER[0]))}
+            onClick={() => {
+              setMatPoints(null);
+              setCalibrating((c) => (c ? null : CAL_ORDER[0]));
+            }}
           >
             {calibrating ? "Done calibrating" : "Calibrate colors"}
           </button>
@@ -293,19 +370,50 @@ export default function App() {
               </button>
             </div>
           )}
+          {matPoints && (
+            <MatCalibrationBar
+              points={matPoints}
+              error={matError}
+              saving={!!matSave}
+              calibrated={!!mat?.calibrated}
+              onUndo={() => editMatPoints(undoPoint(matPoints))}
+              onRestart={() => editMatPoints([])}
+              onSave={saveMatCalibration}
+              onCancel={() => setMatPoints(null)}
+              onRemove={() => {
+                send({ type: "mat_clear" });
+                setMatPoints(null);
+              }}
+            />
+          )}
           <div
             className="camera-frame"
-            style={{ aspectRatio: String(aspect), width: `min(100%, calc(var(--cam-h) * ${aspect}))` }}
+            style={{ aspectRatio: String(frameAspect), width: `min(100%, calc(var(--cam-h) * ${frameAspect}))` }}
           >
-            <video ref={videoRef} muted playsInline className="camera-media"
-              hidden={source !== "camera" || (phoneOwns && !!remoteFrame)} />
-            {phoneOwns && remoteFrame && <img src={remoteFrame} alt="Live phone camera"
-              className="camera-media" onLoad={(event) => {
-                const image = event.currentTarget;
-                if (image.naturalWidth) setAspect(image.naturalWidth / image.naturalHeight);
-              }} />}
-            {source === "sim" && <Simulator ref={simRef} zones={u?.zones ?? []} />}
-            <Overlay scene={u?.scene ?? undefined} zones={u?.zones ?? []} activeZones={activeZones} />
+            {stabilized && mat && (
+              <StabilizedMat mat={mat} scene={u?.scene ?? undefined} zones={u?.zones ?? []} activeZones={activeZones}
+                onError={() => setMatViewFailed(mat.viewSeq)} />
+            )}
+            {/* The raw picture stays mounted (the <video> owns the camera stream); it shrinks to an inset. */}
+            <div className={`raw-layer ${stabilized ? "inset" : ""}`}
+              style={stabilized ? { aspectRatio: String(aspect) } : undefined}>
+              <video ref={videoRef} muted playsInline className="camera-media"
+                hidden={source !== "camera" || (phoneOwns && !!remoteFrame)} />
+              {phoneOwns && remoteFrame && <img src={remoteFrame} alt="Live phone camera"
+                className="camera-media" onLoad={(event) => {
+                  const image = event.currentTarget;
+                  if (image.naturalWidth) setAspect(image.naturalWidth / image.naturalHeight);
+                }} />}
+              {source === "sim" && <Simulator ref={simRef} zones={u?.zones ?? []} />}
+              {display.rawZones && !calibratingMat && (
+                <Overlay scene={u?.scene ?? undefined} zones={u?.zones ?? []} activeZones={activeZones} />
+              )}
+              {stabilized && <RawQuad corners={mat?.corners ?? null} state={mat?.state ?? "off"} />}
+              {matPoints && <MatClickLayer points={matPoints} onAdd={(p) => editMatPoints(addPoint(matPoints, p))} />}
+            </div>
+            {display.blocksVerdict && !calibratingMat && (
+              <MatUnavailable display={display} onRecalibrate={startMatCalibration} />
+            )}
             {calibrating && (
               <div
                 className="calibrate-capture"
@@ -329,6 +437,7 @@ export default function App() {
                 {tracker.status === "occluded" && tracker.missing.length ? `: ${tracker.missing.join(", ")}` : ""}
               </span>
             )}
+            <MatChip display={display} />
             {cameraProblem && (
               <div className="camera-error">
                 <strong>Camera unavailable</strong>
@@ -379,7 +488,7 @@ export default function App() {
             ))}
           </tbody>
         </table>
-        <pre>{JSON.stringify({ mode: u?.mode, tracker: u?.tracker, teach: u?.teach, practice: u?.practice }, null, 2)}</pre>
+        <pre>{JSON.stringify({ mode: u?.mode, tracker: u?.tracker, mat: u?.mat, teach: u?.teach, practice: u?.practice }, null, 2)}</pre>
       </details>
     </div>
   );

@@ -1,15 +1,43 @@
+import type { MatDisplay } from "./MatView";
 import type { ServerUpdate } from "./types";
 
 export type Tone = "neutral" | "success" | "warning" | "error";
 
-type View = {
+export type View = {
   tone: Tone;
   eyebrow: string;
   headline: string;
   expected: string;
   observed: string;
   fix?: string;
+  paused?: string; // the procedure feedback a mat problem is holding back
 };
+
+const MAT_FIX: Record<string, string> = {
+  "Recalibrate mat": "Press Recalibrate mat and click the four corner stickers again.",
+  "Show all four corners": "Keep hands and objects off the corner stickers and fit the whole mat in view.",
+  "Hold the phone still": "Rest the camera or hold it steady until it says Mat tracking.",
+};
+
+/** Mat tracking comes first when it prevents a valid verdict; the procedure's own feedback stays visible. */
+function withMat(view: View, mat: MatDisplay | undefined): View {
+  if (!mat) return view;
+  if (mat.blocksVerdict) {
+    return {
+      tone: mat.state === "stale" ? "warning" : "error",
+      eyebrow: `${view.eyebrow} · ${mat.label}`,
+      headline: mat.action,
+      expected: view.expected,
+      observed: mat.reason,
+      fix: `${MAT_FIX[mat.action] ?? ""} Nothing is checked until the mat is tracked again.`.trim(),
+      paused: view.headline,
+    };
+  }
+  if (mat.state === "unsteady") {
+    return { ...view, tone: view.tone === "success" ? "neutral" : view.tone, observed: mat.reason };
+  }
+  return view;
+}
 
 function sceneSummary(u: ServerUpdate): string {
   const objs = u.scene?.objects.filter((o) => o.visible) ?? [];
@@ -62,7 +90,12 @@ function setupView(u: ServerUpdate): View {
   };
 }
 
-export function statusView(u: ServerUpdate | null): View {
+export function statusView(u: ServerUpdate | null, mat?: MatDisplay): View {
+  const view = procedureView(u);
+  return u?.mode ? withMat(view, mat) : view;
+}
+
+function procedureView(u: ServerUpdate | null): View {
   if (!u || !u.mode) {
     return { tone: "neutral", eyebrow: "Connecting", headline: "Starting up…", expected: "", observed: "" };
   }
@@ -176,6 +209,12 @@ export function StatusCard({ view }: { view: View }) {
           <div className="status-row fix">
             <dt>Fix</dt>
             <dd>{view.fix}</dd>
+          </div>
+        )}
+        {view.paused && (
+          <div className="status-row paused">
+            <dt>Paused</dt>
+            <dd>{view.paused}</dd>
           </div>
         )}
       </dl>

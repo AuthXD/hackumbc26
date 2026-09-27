@@ -165,6 +165,42 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
 .chip.reset { --chip: var(--line); color: var(--muted); margin-left: auto; text-transform: none; }
 .calibrate-capture { position: absolute; inset: 0; cursor: crosshair; background: rgba(255, 255, 255, 0.04); }
 
+/* ---------- mat calibration + stabilized view ---------- */
+.mat-bar { color: var(--text); }
+.mat-bar .mat-step { font-size: 17px; }
+.mat-bar .chip { text-transform: none; }
+.mat-bar-actions { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
+.mat-click { position: absolute; inset: 0; cursor: crosshair; background: rgba(255, 255, 255, 0.04); }
+.mat-click svg, .raw-quad, .mat-band { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.mat-click-line { fill: none; stroke: var(--warning); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.mat-click-dot {
+  position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; display: grid;
+  place-items: center; background: var(--warning); color: #0a0d12; border: 2px solid #0a0d12; font-size: 13px;
+  font-weight: 800; pointer-events: none;
+}
+.raw-layer { position: absolute; inset: 0; }
+.raw-layer.inset {
+  inset: 10px 10px auto auto; width: 34%; z-index: 2; border-radius: 10px; overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.7); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5); background: #000;
+}
+.raw-quad polygon { fill: rgba(52, 211, 153, 0.12); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.raw-quad .quad-ok { stroke: var(--success); }
+.raw-quad .quad-warn { stroke: var(--warning); }
+.mat-band path { fill: rgba(10, 13, 18, 0.62); }
+.mat-band-edge { fill: none; stroke: rgba(251, 191, 36, 0.85); stroke-width: 1.5; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }
+.mat-chip { right: auto; left: 12px; }
+.mat-tracking i { background: var(--success); }
+.mat-unsteady i, .mat-stale i { background: var(--warning); animation: pulse 1s ease-in-out infinite; }
+.mat-lost i, .mat-recalibrate i { background: var(--error); }
+.mat-unavailable {
+  position: absolute; left: 12px; right: 12px; top: 12px; z-index: 3; display: flex; flex-wrap: wrap; align-items: center;
+  gap: 6px 12px; padding: 10px 14px; border-radius: 10px; background: rgba(10, 13, 18, 0.88);
+  border-left: 6px solid var(--error);
+}
+.mat-unavailable strong { font-size: 20px; color: var(--error); }
+.mat-unavailable span { color: var(--text); flex: 1; min-width: 12em; }
+.status-row.paused dd { color: var(--muted); }
+
 /* ---------- status card ---------- */
 .status {
   --tone: var(--neutral);

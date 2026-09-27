@@ -1,5 +1,6 @@
 """Mat stabilization inside the live session: both detectors see the canonical mat, nothing unsafe passes."""
 
+import json
 import threading
 
 import numpy as np
@@ -98,6 +99,15 @@ def test_color_tracking_loss_blocks_commits_until_steady_again():
     moved_world = world({"red": (0.5, 0.5), "blue": (0.5, 0.8)})
     snap = s.process_frame(jpeg(frame(moved_world, H0)), 30.2, "phone")  # first frame back: not trusted yet
     assert not snap["mat"]["trustworthy"] and s.recorder.steps == []
+
+
+def test_unsteady_snapshots_are_strict_json():
+    s = Session(persist=False)
+    calibrate(s, COLOR_WORLD)
+    snap = s.process_frame(jpeg(frame(COLOR_WORLD, H0)), 1.0, "phone")
+    assert snap["mat"]["state"] == "unsteady"
+    assert snap["tracker"]["status"] == "moving"  # never committed while unsteady
+    json.dumps(snap, allow_nan=False)  # the browser's JSON.parse rejects Infinity
 
 
 # -- semantic path --------------------------------------------------------------------------------------
