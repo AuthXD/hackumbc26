@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { demoVideoUrl, githubUrl, liveDemoUrl } from "./links";
 
 const steps = [
@@ -7,6 +8,39 @@ const steps = [
   ["04", "Practice the learned order", "The next person is checked against that sequence."],
   ["05", "Correct mistakes and continue", "A skip, the wrong object, or the wrong place stops the sequence until it is fixed."],
 ];
+
+const slides = [
+  {
+    id: "everyday",
+    label: "Everyday handoff",
+    title: "Teach any visible routine",
+    image: "/images/everyday.jpg",
+    alt: "Water bottle, headphones, phones, smartwatch, wallet, and keys arranged on a black mat.",
+    annotations: ["Objects identified", "Order recorded", "Step 02 captured"],
+  },
+  {
+    id: "toolbox",
+    label: "Toolbox workflow",
+    title: "Return every tool in order",
+    image: "/images/toolbox.jpg",
+    alt: "Tape measure, safety glasses, screwdriver, pliers, and adjustable wrench arranged on a black mat.",
+    annotations: ["Five tools tracked", "Sequence learned", "Missing step caught"],
+  },
+  {
+    id: "clinical",
+    label: "Clinical training",
+    title: "Practice a tray setup safely",
+    image: "/images/clinical.jpg",
+    alt: "Gloves, sterile pad, bandage roll, sanitizer, and stethoscope arranged on a black mat.",
+    annotations: ["Training objects found", "Setup preserved", "Order coached"],
+  },
+] as const;
+
+type SlideIndex = 0 | 1 | 2;
+
+const slideIndices = [0, 1, 2] as const;
+const nextSlide: Record<SlideIndex, SlideIndex> = { 0: 1, 1: 2, 2: 0 };
+const previousSlide: Record<SlideIndex, SlideIndex> = { 0: 2, 1: 0, 2: 1 };
 
 function Mark() {
   return (
@@ -20,6 +54,55 @@ function Mark() {
 
 export function App() {
   const demoHref = demoVideoUrl ?? "#how";
+  const localAppUrl = "http://localhost:5173";
+  const [activeSlide, setActiveSlide] = useState<SlideIndex>(0);
+  const [interactionPaused, setInteractionPaused] = useState(false);
+  const [rotationPaused, setRotationPaused] = useState(false);
+  const [pageVisible, setPageVisible] = useState(!document.hidden);
+
+  useEffect(() => {
+    const onVisibilityChange = () => setPageVisible(!document.hidden);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (interactionPaused || rotationPaused || !pageVisible || reducedMotion) return;
+
+    const timer = window.setInterval(() => {
+      setActiveSlide((current) => nextSlide[current]);
+    }, 5200);
+    return () => window.clearInterval(timer);
+  }, [interactionPaused, pageVisible, rotationPaused]);
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) return;
+
+    const root = document.documentElement;
+    const sections = [...document.querySelectorAll<HTMLElement>("[data-reveal]")];
+    root.classList.add("has-reveal");
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          entry.target.classList.add("is-visible");
+          observer.unobserve(entry.target);
+        }
+      },
+      { rootMargin: "0px 0px -12%", threshold: 0.12 },
+    );
+
+    for (const section of sections) observer.observe(section);
+    return () => {
+      observer.disconnect();
+      root.classList.remove("has-reveal");
+    };
+  }, []);
+
+  const slide = slides[activeSlide];
 
   return (
     <>
@@ -34,8 +117,8 @@ export function App() {
           <nav aria-label="Page">
             <a href="#how">How it works</a>
             <a href="#uses">Use cases</a>
-            <a href="#architecture">Architecture</a>
             {githubUrl && <a href={githubUrl}>GitHub</a>}
+            <a className="open-app" href={localAppUrl} target="_blank" rel="noreferrer">Open local app <span aria-hidden="true">↗</span></a>
           </nav>
         </div>
       </header>
@@ -50,29 +133,69 @@ export function App() {
             <a className="cta" href={demoHref}>
               Watch the demo <span aria-hidden="true">↗</span>
             </a>
-            <a className="text-link" href="#architecture">Explore the system <span aria-hidden="true">↓</span></a>
+            <a className="text-link" href="#how">See how it works <span aria-hidden="true">↓</span></a>
           </div>
-          <figure className="hero-figure">
+          <figure
+            className="hero-figure"
+            aria-roledescription="carousel"
+            aria-label="TeachBack use cases"
+            onPointerEnter={() => setInteractionPaused(true)}
+            onPointerLeave={() => setInteractionPaused(false)}
+            onFocusCapture={() => setInteractionPaused(true)}
+            onBlurCapture={(event) => {
+              if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) {
+                setInteractionPaused(false);
+              }
+            }}
+          >
             <div className="photo">
               <img
-                src="/images/hero.webp"
-                alt="A real tabletop: blue water bottle, phones, headphones, a green smartwatch, and a brown wallet on a black mat."
-                width={1800}
-                height={917}
+                key={slide.id}
+                src={slide.image}
+                alt={slide.alt}
+                width={1792}
+                height={1024}
               />
               <ul className="annos">
-                <li className="paper">Objects identified</li>
-                <li className="paper">Order recorded</li>
-                <li className="lime">Step 02 captured</li>
+                {slide.annotations.map((annotation, index) => (
+                  <li className={index === 2 ? "lime" : "paper"} key={annotation}>{annotation}</li>
+                ))}
               </ul>
             </div>
-            <figcaption>
-              Labels on the photograph describe the product. They are not a live scan.
-            </figcaption>
+            <div className="carousel-meta">
+              <figcaption><span>{slide.label}</span> — {slide.title}</figcaption>
+              <div className="carousel-controls" aria-label="Choose a use case">
+                <button type="button" onClick={() => setActiveSlide(previousSlide[activeSlide])} aria-label="Previous use case">←</button>
+                {slideIndices.map((index) => {
+                  const item = slides[index];
+                  return (
+                  <button
+                    type="button"
+                    className={index === activeSlide ? "active" : ""}
+                    aria-label={`Show ${item.label}`}
+                    aria-pressed={index === activeSlide}
+                    onClick={() => setActiveSlide(index)}
+                    key={item.id}
+                  >
+                    {String(index + 1).padStart(2, "0")}
+                  </button>
+                  );
+                })}
+                <button type="button" onClick={() => setActiveSlide(nextSlide[activeSlide])} aria-label="Next use case">→</button>
+                <button
+                  type="button"
+                  className="pause-control"
+                  aria-pressed={rotationPaused}
+                  onClick={() => setRotationPaused((paused) => !paused)}
+                >
+                  {rotationPaused ? "Play" : "Pause"}
+                </button>
+              </div>
+            </div>
           </figure>
         </section>
 
-        <section className="strip" aria-labelledby="strip-title">
+        <section className="strip" aria-labelledby="strip-title" data-reveal>
           <h2 id="strip-title">One demonstration<br />becomes a reusable<br />procedure.</h2>
           <ol>
             <li>
@@ -93,7 +216,7 @@ export function App() {
           </ol>
         </section>
 
-        <section className="how" id="how" aria-labelledby="how-title">
+        <section className="how" id="how" aria-labelledby="how-title" data-reveal>
           <h2 id="how-title">How it works</h2>
           <ol>
             {steps.map(([num, title, body]) => (
@@ -108,7 +231,7 @@ export function App() {
           </ol>
         </section>
 
-        <section className="uses" id="uses" aria-labelledby="uses-title">
+        <section className="uses" id="uses" aria-labelledby="uses-title" data-reveal>
           <h2 id="uses-title">One engine. Different procedures.</h2>
           <p className="uses-note">Both are the same learned sequence. Neither is a separate mode.</p>
           <article>
@@ -125,7 +248,7 @@ export function App() {
           </article>
         </section>
 
-        <section className="trust" aria-labelledby="trust-title">
+        <section className="trust" aria-labelledby="trust-title" data-reveal>
           <div className="trust-inner">
             <h2 id="trust-title">AI explains.<br />Deterministic vision decides.</h2>
             <dl>
@@ -146,24 +269,7 @@ export function App() {
                 <dd>Stores procedures, setup checks, and readiness history.</dd>
               </div>
             </dl>
-            <p className="rule">Gemini never decides whether a physical action passed.</p>
-          </div>
-        </section>
-
-        <section className="arch" id="architecture" aria-labelledby="arch-title">
-          <h2 id="arch-title">Architecture</h2>
-          <div className="pipe" aria-label="Frame path">
-            <ol>
-              <li>Phone camera</li>
-              <li>Stabilized mat</li>
-              <li>Locate Anything</li>
-              <li>Procedure engine</li>
-              <li>Coaching</li>
-            </ol>
-          </div>
-          <div className="branches">
-            <p><span>Procedure library</span> → Tiger Data</p>
-            <p><span>Learned steps</span> → Gemini</p>
+            <p className="rule"><span>Verification rule</span> Gemini explains the procedure; it never decides whether a physical action passed.</p>
           </div>
         </section>
       </main>
@@ -174,6 +280,7 @@ export function App() {
           <p>Teach once. Coach every time.</p>
           <p><a href="https://teachonce.study">teachonce.study</a></p>
           <ul>
+            <li><a href={localAppUrl} target="_blank" rel="noreferrer">Open local app</a></li>
             {githubUrl && <li><a href={githubUrl}>GitHub</a></li>}
             {demoVideoUrl && <li><a href={demoVideoUrl}>Demo video</a></li>}
             {liveDemoUrl && <li><a href={liveDemoUrl}>Live demo</a></li>}
