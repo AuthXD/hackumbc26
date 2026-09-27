@@ -155,9 +155,6 @@ h1 span { display: block; }
   object-fit: cover;
   animation: photo-in 420ms ease-out both;
 }
-  object-fit: cover;
-  animation: photo-in 420ms ease-out both;
-}
 .annos {
   position: absolute;
   right: 14px;
