@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
@@ -15,10 +16,18 @@ from .session import Session
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("teachback")
 
-app = FastAPI(title="TeachBack")
 session = Session()
 gemini = GeminiDescriber(settings)
 voice = ElevenLabsVoice(settings)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await asyncio.to_thread(session.close)
+
+
+app = FastAPI(title="TeachBack", lifespan=lifespan)
 
 
 class Hub:
@@ -68,7 +77,8 @@ async def _describe(index: int, after_image: str | None) -> None:
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"ok": True, "mode": session.mode, "gemini": gemini.enabled, "elevenlabs": voice.enabled}
+    return {"ok": True, "mode": session.mode, "gemini": gemini.enabled, "elevenlabs": voice.enabled,
+            "detector": session.detector_status()}
 
 
 @app.get("/api/keyframes/{key}.jpg")
@@ -119,6 +129,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     snap = session.calibrate(str(cmd.get("color")), float(cmd.get("x", -1)), float(cmd.get("y", -1)))
                 elif kind == "reset_colors":
                     snap = session.reset_colors()
+                elif kind == "detector":
+                    snap = session.configure_detector(str(cmd.get("kind", "")), str(cmd.get("labels", "")))
                 else:
                     continue
                 await hub.broadcast(snap)

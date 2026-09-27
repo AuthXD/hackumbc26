@@ -10,11 +10,11 @@ from typing import Literal
 
 from .config import DATA_DIR, ColorRange, Settings, default_colors, settings
 from .engine import Event, PracticeEngine, TeachRecorder, speak
+from .detectors import ColorDetector, DEFAULT_LABELS, LatestScan, LocateAnythingDetector, parse_labels
 from .models import Procedure, SceneState, StepText
 from .stability import StabilityTracker, TrackerResult
 from .vision import (
     MotionMeter,
-    analyze_frame,
     color_from_sample,
     decode_jpeg,
     downscale,
@@ -47,9 +47,25 @@ class Session:
         self.reference_scene: SceneState | None = None  # last committed stable state
         self.notice = ""  # one-line feedback for the last command
         self.pending_ai: list[int] = []  # learned step indexes awaiting an AI description
+        self.detector_kind: Literal["color", "semantic"] = "color"
+        self.color_detector = ColorDetector(cfg.vision)
+        self.semantic_detector = LocateAnythingDetector(cfg)
+        self.scanner = LatestScan(self.semantic_detector)
+        self.semantic_labels = DEFAULT_LABELS
+        self.scan_status = "idle"
+        self.scan_message = "Hold the table still, then press Scan Objects."
+        self.last_full_frame = None
+        self.last_jpeg: bytes | None = None
+        self.last_capture = 0.0
+        self.still_since: float | None = None
+        self.still_frames = 0
         if persist:
             self._load()
             self._load_calibration()
+            if self.procedure and self.procedure.detector_kind == "semantic":
+                self.semantic_labels = tuple(self.procedure.tracked_ids)
+                if cfg.semantic_beta:
+                    self.detector_kind = "semantic"
 
     # -- frames ---------------------------------------------------------------------------------
 
@@ -60,8 +76,15 @@ class Session:
         if frame is None:
             return {"type": "update", "error": "Could not decode frame"}
         small = downscale(frame, self.cfg.vision.process_width)
-        scene = analyze_frame(small, self.cfg.vision, now)
         with self.lock:
+            self.last_full_frame, self.last_jpeg, self.last_capture = frame, jpeg, now
+            self.last_frame = small
+            if self.detector_kind == "semantic":
+                events = self._semantic_frame(frame, small, now)
+                snap = self.snapshot(events)
+                snap["frameMs"] = round((time.perf_counter() - t0) * 1000, 1)
+                return snap
+            scene = self.color_detector.detect(small, now)
             scene = suppress_static_stacks(scene, self.reference_scene, self.cfg.vision)
             motion = self.meter.update(small)
             result = self.tracker.update(scene, motion, now)
@@ -74,6 +97,106 @@ class Session:
         snap["frameMs"] = round((time.perf_counter() - t0) * 1000, 1)
         return snap
 
+    def _invalidate_scan(self, message="Scene changed. Hold still and press Scan Objects."):
+        self.scanner.invalidate()
+        self.last_scene = None
+        self.scan_status, self.scan_message = "idle", message
+
+    def _semantic_frame(self, frame, small, now):
+        motion = self.meter.update(small)
+        if motion > self.cfg.stability.motion_threshold:
+            self.still_since, self.still_frames = now, 0
+            self._invalidate_scan()
+            self.last_tracker = TrackerResult("moving", motion)
+            return []
+        if self.still_since is None:
+            self.still_since = now
+        self.still_frames += 1
+        stable_ms = (now - self.still_since) * 1000
+        settled = self.still_frames >= self.cfg.stability.min_frames and stable_ms >= self.cfg.stability.stable_ms
+        self.last_tracker = TrackerResult("stable" if settled else "settling", motion, stable_for_ms=stable_ms)
+        if not settled:
+            return []
+        result = self.scanner.take_result()
+        if result is None:
+            return []
+        drift = MotionMeter()
+        drift.update(result.request.frame)
+        if drift.update(frame) > self.cfg.stability.motion_threshold:
+            self._invalidate_scan("Table changed during the scan. Hold still and scan again.")
+            return []
+        if result.scene is None:
+            self.last_scene = None
+            self.scan_status = "ambiguous" if result.ambiguous else "error"
+            self.scan_message = result.error
+            return []
+        self.last_scene = self.reference_scene = result.scene
+        self.scan_status = "valid"
+        self.scan_message = "Scan accepted. After each move, hold still and press Scan Objects."
+        return self._on_stable(result.scene, result.request.jpeg)
+
+    def configure_detector(self, kind: str, labels: str = "") -> dict:
+        with self.lock:
+            try:
+                if kind not in ("color", "semantic"):
+                    raise ValueError("Unknown detector mode.")
+                if self.mode != "idle":
+                    raise ValueError("Pause the current procedure before switching detectors or object descriptions.")
+                if kind == "semantic":
+                    if not self.cfg.semantic_beta:
+                        raise ValueError("Semantic Objects beta is not enabled in server configuration.")
+                    requested = parse_labels(labels)
+                    if self.procedure and self.procedure.detector_kind == "semantic" and set(requested) != set(self.procedure.tracked_ids):
+                        raise ValueError("Reset the saved semantic procedure before changing its objects.")
+                    self.semantic_labels = requested
+                self.detector_kind = kind
+                self._invalidate_scan()
+                self.tracker.reset()
+                self.meter.reset()
+                self.still_since, self.still_frames = None, 0
+                self.last_tracker = self.reference_scene = None
+                self.notice = f"{'Semantic Objects beta' if kind == 'semantic' else 'Color mode'} selected. Saved procedure preserved."
+            except ValueError as exc:
+                self.notice = str(exc)
+            return self.snapshot()
+
+    def _cmd_scan(self) -> list[Event]:
+        if self.detector_kind != "semantic":
+            self.notice = "Select Semantic Objects beta before scanning."
+        elif self.last_full_frame is None or not self._can_scan():
+            self.notice = "Hold the table still before scanning."
+        else:
+            self.last_scene = None
+            self.scanner.submit(self.last_full_frame, self.last_jpeg, self.semantic_labels, self.last_capture)
+            self.scan_status, self.scan_message = "scanning", "Scanning objects. Keep the table still."
+            self.notice = ""
+        return []
+
+    def _can_scan(self):
+        return (self.last_full_frame is not None and self.still_since is not None
+                and self.still_frames >= self.cfg.stability.min_frames
+                and (self.last_capture - self.still_since) * 1000 >= self.cfg.stability.stable_ms)
+
+    def _cmd_pause(self) -> list[Event]:
+        proc = self.current_procedure()
+        if proc is not None:
+            self.procedure = proc
+            self._save()
+        self.mode = "idle"
+        self.notice = "Procedure paused and preserved. You can now switch detector modes."
+        return []
+
+    def detector_status(self):
+        return {"kind": self.detector_kind, "betaEnabled": self.cfg.semantic_beta,
+                "labels": list(self.semantic_labels), "workerState": self.semantic_detector.worker.state,
+                "scanState": self.scan_status, "message": self.scan_message,
+                "canScan": self.detector_kind == "semantic" and self._can_scan(),
+                "switchLocked": self.mode != "idle",
+                "procedureKind": self.procedure.detector_kind if self.procedure else None}
+
+    def close(self):
+        self.scanner.close()
+
     def _on_stable(self, scene: SceneState, jpeg: bytes) -> list[Event]:
         if self.mode != "idle":
             self.notice = ""  # the status card takes over from the command's one-liner
@@ -83,7 +206,8 @@ class Session:
             if self.recorder.steps and self.tracker.required is None:
                 # From the first learned step on, a missing object means occlusion.
                 self.tracker.required = self.recorder.tracked_set
-            self.pending_ai += [e.step_index for e in events if e.kind == "step_learned"]
+            if self.detector_kind == "color":
+                self.pending_ai += [e.step_index for e in events if e.kind == "step_learned"]
             if self.recorder.phase == "done":
                 self._complete_teaching()
             return [e for e in events if e.kind == "speak"]
@@ -101,7 +225,11 @@ class Session:
                 "undo_step": self._cmd_undo_step,
                 "practice": self._cmd_practice,
                 "reset": self._cmd_reset,
+                "scan": self._cmd_scan,
+                "pause": self._cmd_pause,
             }.get(action)
+            if self.detector_kind == "semantic" and action in ("teach", "practice", "undo_step", "reset", "pause"):
+                self._invalidate_scan("Hold the table still, then press Scan Objects.")
             events = handler() if handler else []
             return self.snapshot(events)
 
@@ -134,6 +262,9 @@ class Session:
         if not self.procedure or not self.procedure.steps:
             self.notice = "Teach a procedure first."
             return [speak("Teach me a procedure first.")]
+        if self.procedure.detector_kind != self.detector_kind:
+            self.notice = f"Switch to {self.procedure.detector_kind} mode to practice this saved procedure."
+            return []
         self.mode = "practicing"
         self.recorder = None
         self.practice = PracticeEngine(self.procedure)
@@ -154,6 +285,9 @@ class Session:
     def calibrate(self, color: str, x: float, y: float) -> dict:
         """Re-center one color's HSV range on the pixel the user clicked."""
         with self.lock:
+            if self.detector_kind != "color":
+                self.notice = "Color calibration is only available in Color mode."
+                return self.snapshot()
             idx = next((i for i, c in enumerate(self.cfg.vision.colors) if c.name == color), None)
             if idx is None or self.last_frame is None or not (0 <= x <= 1 and 0 <= y <= 1):
                 self.notice = "Calibration needs a live frame and a known color."
@@ -297,6 +431,7 @@ class Session:
         return {
             "type": "update",
             "mode": self.mode,
+            "detector": self.detector_status(),
             "notice": self.notice,
             "scene": self.last_scene.to_json() if self.last_scene else None,
             "zones": [
@@ -322,6 +457,7 @@ def _procedure_json(proc: Procedure | None) -> dict | None:
     if proc is None:
         return None
     return {
+        "detectorKind": proc.detector_kind,
         "trackedIds": proc.tracked_ids,
         "steps": [
             s.model_dump(by_alias=True, mode="json", exclude={"before_state", "after_state"}) for s in proc.steps

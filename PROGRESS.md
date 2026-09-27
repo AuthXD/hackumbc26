@@ -114,6 +114,23 @@ Key decisions:
 2. Add `GEMINI_API_KEY` / `ELEVENLABS_API_KEY` to `.env` and confirm AI step titles + voice live.
 3. Optional: HTTPS dev server for the iPhone camera path.
 
+### Semantic Objects constrained beta (2026-09-26)
+- The full OnePlus 12 / black-mat benchmark covered 12 descriptions across three layouts: separated 10/12,
+  adjacent 7/12, overlap/clutter 4/12; 21/36 overall (58.3%). Runtime passed: 11.015 s cold startup, 1.834 s median,
+  4971 MiB sampled GPU peak, 10/10 requests. The broad >=80% arbitrary-object gate failed.
+- Added an opt-in `TEACHBACK_SEMANTIC_BETA=1` manual-scan mode for four verified objects: blue water bottle, brown
+  wallet, green smartwatch, and blue smartphone. Color mode remains unchanged and is the default.
+- Semantic results require exactly one valid box per requested description and reject missing, duplicate,
+  unexpected, or heavily overlapping objects. Confidence remains unavailable rather than fabricated; stacking is
+  unsupported. One active inference plus one replaceable pending request prevents stale results from grading.
+- Saved procedures preserve their detector identity. Switching object descriptions or detectors is locked during
+  Teach/Practice; Pause preserves the procedure and enables an explicit Color fallback.
+- Verification: 91 tests passed; TypeScript typecheck and production build passed; original live demo check passed
+  3/3. A real WebSocket scan of the separated OnePlus photo found all four recommended objects and mapped zones.
+  Cold app scan was 21.5 s including model load; warm rescan was 2.078 s. Color fallback preserved the procedure.
+- Next product unit: a separate Setup mode for inventory/order checks, followed by Tiger Data persistence and then
+  Gemini retrieval. Do not put those changes in the same commit as detector integration.
+
 ### Takeover baseline (2026-09-26)
 - Inspected README, architecture, demo script, package scripts, history and camera/stream,
   detector, SceneState, stability, teaching/practice, persistence and both integrations.

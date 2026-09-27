@@ -49,6 +49,19 @@ Copy `.env.example` to `.env` in the repo root and fill in any keys you have, th
 
 Neither service ever decides whether a step was correct. That decision is always deterministic.
 
+### Optional Semantic Objects beta
+
+The original four-color path remains the default and the safest judging demo. To enable manual recognition of
+ordinary objects with the local LocateAnything model, set `TEACHBACK_SEMANTIC_BETA=1` in `.env` and restart the
+server. The UI then offers **Semantic Objects · Beta**.
+
+Use 2–6 unique descriptions such as `blue water bottle, brown wallet, green smartwatch, blue smartphone`. Keep
+every object separated and fully visible on the black mat. In Teach or Practice, wait for the table to settle and
+press **Scan Objects** after the starting layout and after every move. The first scan loads the GPU model and can
+take roughly 20 seconds; warm scans take about 2 seconds on the tested RTX 4060 laptop. Stacking is not supported
+in this mode. If a scan fails, pause the procedure before explicitly switching back to Color mode; the learned
+semantic procedure is preserved.
+
 ---
 
 ## Physical setup
@@ -97,8 +110,9 @@ themselves live in `backend/app/config.py`.
 npm test
 ```
 
-This runs 68 backend tests: the sequence engine, vision on synthetic JPEG frames, the stability filter, end-to-end
-sessions with a simulated hand, the integration fallbacks, and an app smoke test.
+This runs 91 backend tests: the sequence engine, vision on synthetic JPEG frames, the stability filter, end-to-end
+sessions with a simulated hand, semantic scan scheduling and worker failures, integration fallbacks, and an app
+smoke test.
 
 ```bash
 npm run demo:check
@@ -117,6 +131,8 @@ npm run typecheck
 backend/app/
   config.py        every threshold: HSV colors, zones, stability timing, motion gate
   vision.py        HSV segmentation → objects, zones, stacking; motion meter; color calibration
+  detectors.py     color detector adapter + conservative semantic scan validation/scheduling
+  locate_worker.py lazy persistent WSL/CUDA LocateAnything worker with deadlines
   stability.py     turns noisy frames into committed "stable" arrangements
   engine.py        TeachRecorder + PracticeEngine (deterministic pass/fail)
   describe.py      deterministic step / correction wording
@@ -130,16 +146,17 @@ frontend/src/      React UI (App, StatusCard, Timeline, Overlay, Simulator, spee
 
 See [ARCHITECTURE.md](ARCHITECTURE.md), [DEMO_SCRIPT.md](DEMO_SCRIPT.md), and [PROGRESS.md](PROGRESS.md).
 
-The separate local LocateAnything benchmark is documented in
-[LOCATE_ANYTHING_EVAL.md](LOCATE_ANYTHING_EVAL.md). It has not replaced the color detector;
-adoption is pending accuracy measurements on real demo-object photos.
+The local LocateAnything benchmark and constrained beta decision are documented in
+[LOCATE_ANYTHING_EVAL.md](LOCATE_ANYTHING_EVAL.md). It has not replaced the color detector.
 
 ## Troubleshooting
 
 - **"Camera unavailable"**: allow camera access in the browser's site settings, and close other apps using the
   webcam (Teams, Zoom). The page must be opened as `http://localhost:5173`, because browsers only allow cameras on
   localhost or HTTPS. Use **Simulator** to keep demoing.
-- **An object isn't detected**: calibrate colors. Check the debug drawer at the bottom for per-object confidence.
+- **A colored object isn't detected**: calibrate colors. Check the debug drawer for per-object confidence.
+- **A semantic scan is ambiguous**: use the four recommended objects, separate them, remove clutter/overlap, keep
+  the camera fixed, and scan again. LocateAnything does not expose confidence scores in this build.
 - **Status stuck on "Hands moving"**: something in view keeps changing, such as a person, a screen, or flicker. The
   debug drawer shows `motion %`. Raise `motion_threshold` in `config.py`, or aim the camera only at the table.
 - **Steps merge together**: pause about a second with hands off between steps.
@@ -147,7 +164,10 @@ adoption is pending accuracy measurements on real demo-object photos.
 
 ## Known limitations
 
-- One object per color, four colors. Colors must stand out from the table and from skin tones.
+- Color mode supports one object per color and four colors. Colors must stand out from the table and skin tones.
+- Semantic Objects is an opt-in, manual-scan beta: 2–6 uniquely described, separated objects; no stacking or
+  automatic continuous tracking. The broader 12-object benchmark reached 58.3%, so use the verified four-object
+  set rather than claiming arbitrary-object reliability.
 - Stacking is inferred from a single 2D view. Touching objects can look stacked. Objects that haven't moved since
   the last settled state are never newly counted as stacked, which removes most false positives.
 - An object hidden inside an opaque container counts as occluded. Use open or marked container areas.

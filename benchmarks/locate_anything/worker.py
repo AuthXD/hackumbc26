@@ -68,7 +68,13 @@ def main():
                 if not result:
                     raise RuntimeError(lib.la_capi_last_error(ctx).decode(errors="replace"))
                 try:
-                    raw = json.loads(ctypes.string_at(result))
+                    payload = ctypes.string_at(result)
+                    try:
+                        raw = json.loads(payload)
+                    except json.JSONDecodeError as exc:
+                        raise ValueError(
+                            f"Native response was not JSON ({len(payload)} bytes): {payload[:500]!r}"
+                        ) from exc
                 finally:
                     lib.la_capi_free_string(result)
                 emit({"type": "result", "id": request["id"], "status": "ok",

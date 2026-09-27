@@ -46,11 +46,12 @@ export function Overlay({ scene, zones, activeZones }: { scene?: SceneState; zon
     for (const o of scene?.objects ?? []) {
       if (!o.visible) continue;
       const [x, y, w, h] = o.bbox;
-      const color = OBJECT_CSS[o.color] ?? "#fff";
+      const color = o.kind === "color" ? OBJECT_CSS[o.color] ?? "#fff" : "#c4b5fd";
       ctx.lineWidth = 3;
       ctx.strokeStyle = color;
       ctx.strokeRect(x * W, y * H, w * W, h * H);
-      const text = `${o.id}${o.stackedOn ? ` on ${o.stackedOn}` : ""} · ${o.zone ?? "–"} · ${Math.round(o.confidence * 100)}%`;
+      const confidence = o.kind === "color" ? ` · ${Math.round(o.confidence * 100)}%` : "";
+      const text = `${o.kind === "semantic" ? o.label : o.id}${o.stackedOn ? ` on ${o.stackedOn}` : ""} · ${o.zone ?? "–"}${confidence}`;
       ctx.font = "600 14px Inter, system-ui, sans-serif";
       const tw = ctx.measureText(text).width;
       const ly = Math.max(0, y * H - 24);

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -35,13 +35,24 @@ Arrangement = dict[str, Placement]
 
 class SceneObject(CamelModel):
     id: str
-    color: str
+    kind: Literal["color", "semantic"] = "color"
+    color: str | None
+    label: str | None = None
     center: tuple[float, float]  # normalized frame coordinates
     bbox: tuple[float, float, float, float]  # x, y, w, h normalized
     zone: str | None
     visible: bool = True
     stacked_on: str | None = None
-    confidence: float = 1.0
+    confidence: float | None = 1.0
+
+    @model_validator(mode="after")
+    def consistent_identity(self):
+        if self.kind == "color":
+            if not self.color or self.label is not None or self.id != self.color or self.confidence is None:
+                raise ValueError("Color identity must match color, without a semantic label")
+        elif not self.label or self.id != self.label or self.color is not None or self.confidence is not None or self.stacked_on:
+            raise ValueError("Semantic identity requires its exact label, no color, confidence or stacking")
+        return self
 
     def placement(self) -> Placement:
         return Placement(zone=self.zone, stacked_on=self.stacked_on)
@@ -51,6 +62,12 @@ class SceneState(CamelModel):
     objects: list[SceneObject] = Field(default_factory=list)
     captured_at: float = 0.0
     stable_since: float | None = None
+
+    @model_validator(mode="after")
+    def consistent_objects(self):
+        if len({o.id for o in self.objects}) != len(self.objects) or len({o.kind for o in self.objects}) > 1:
+            raise ValueError("A scene must have unique identities from one detector")
+        return self
 
     def arrangement(self, only: set[str] | None = None) -> Arrangement:
         return {
@@ -123,6 +140,10 @@ class Procedure(CamelModel):
     initial_state: SceneState
     tracked_ids: list[str]
     steps: list[LearnedStep] = Field(default_factory=list)
+
+    @property
+    def detector_kind(self) -> Literal["color", "semantic"]:
+        return self.initial_state.objects[0].kind if self.initial_state.objects else "color"
 
     def arrangement_before(self, index: int) -> Arrangement:
         """Expected arrangement before step `index` (== after step index-1)."""

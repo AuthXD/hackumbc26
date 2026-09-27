@@ -81,6 +81,14 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
 .btn.subtle { background: transparent; color: var(--muted); }
 .notice { color: var(--muted); font-size: 15px; margin-left: 6px; }
 
+.semantic-controls { border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 10px; }
+.semantic-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.beta-badge { color: #c4b5fd; font-size: 11px; text-transform: uppercase; margin-left: 6px; }
+.object-input { display: grid; gap: 6px; color: var(--muted); font-size: 14px; }
+.object-input input { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); font: inherit; }
+.semantic-error { color: var(--error); margin: 0; }
+.semantic-controls .hint { margin: 0; }
+
 /* ---------- stage ---------- */
 .stage { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, 1fr); gap: 16px; align-items: stretch; }
 @media (max-width: 1100px) { .stage { grid-template-columns: 1fr; } }

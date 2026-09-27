@@ -2,17 +2,18 @@
 
 ## Decision
 
-**Not adopted. The required real tabletop accuracy benchmark is incomplete.**
+**The broad arbitrary-object gate did not pass. A constrained, opt-in manual-scan beta is adopted.**
 
-The local model loads on the laptop GPU, returns plausible labeled boxes, and has
-completed ten consecutive requests. These are runtime smoke results on existing
-apple and laboratory images, not evidence for the user's demo objects. No production
-detector interface, model scheduling, tracking or fallback integration has been enabled.
-The original color detector and synthetic demonstration remain intact.
+Three OnePlus 12 tabletop photos on the intended black mat were independently annotated before inference. Across
+separated, adjacent, and overlapping layouts, the model localized 21/36 instances at exact label + IoU >= 0.5
+(58.3%). The separated layout scored 10/12, the adjacent layout 7/12, and the overlap/clutter layout 4/12. This is
+below the 80% gate and does not support an “identify anything” claim.
 
-The missing input is at least three saved real tabletop photos covering ten object
-categories, with independent ground-truth boxes. The user supplied nine intended
-objects but no image folder yet. A pen is proposed as the tenth, not claimed as tested.
+The reliable subset—blue water bottle, brown wallet, green smartwatch, and blue smartphone—was integrated behind
+`TEACHBACK_SEMANTIC_BETA=1`. It uses explicit user descriptions and manual scans only, rejects missing, duplicate,
+unexpected, invalid, or heavily overlapping detections, and never fabricates confidence. Color mode remains the
+default fallback. The beta preserves detector identity in saved procedures and forbids switching detectors during
+an active procedure.
 
 ## Repository baseline
 
@@ -87,6 +88,8 @@ Generating a fake constant or treating box geometry as probability would be misl
 | Verified runner, hybrid 640 | 11.049 s | 1.401 s | 4957 MiB | 10/10 completed |
 | Intentional 50 ms deadline | 12.429 s | Not scored | 4957 MiB | Correctly rejected request 1 |
 | Final runner, alongside app demo | 9.967 s | 1.336 s | 4957 MiB | 10/10 completed |
+| OnePlus tabletop, 12 labels / 3 scenes | 11.015 s | 1.834 s | 4971 MiB | 10/10 completed |
+| Live app, verified four-object scene | 21.5 s including cold load | 2.078 s warm rescan | ~5 GiB class | Passed |
 
 Cold startup includes process creation, WSL startup overhead and loading the model to
 GPU. The OS disk cache was not flushed. Inference timing includes prepared PNG read,
@@ -95,7 +98,12 @@ resizing and overlay rendering. GPU readings are device-wide at 100ms intervals;
 they include other programs and can miss brief peaks. After the timeout probe exited,
 `nvidia-smi` showed 540 MiB used, confirming the worker released GPU allocation.
 
-Smoke accuracy was 4/4 annotated instances over two unique images: three apples and
+The real OnePlus tabletop benchmark scored 21/36 (58.3%) over three layouts and 12 annotated descriptions. The
+separated image scored 10/12; performance dropped as similar items became adjacent and objects overlapped. This
+shows that the black mat, OnePlus camera, and moderate lighting differences are workable, while overlap and clutter
+are the main failure mode. Raw photos, ground truth, and generated outputs remain local in ignored benchmark paths.
+
+Earlier smoke accuracy was 4/4 annotated instances over two unique images: three apples and
 one foreground beaker. Ground truth was manually estimated before inference. Matching
 requires the same normalized label and IoU >= 0.5, one prediction per target. Repeated
 requests are excluded from unique-scene accuracy. This small result must not be
@@ -109,10 +117,10 @@ The two smoke images are existing local test assets, not a representative tablet
 
 | Requirement | Current evidence | Verdict |
 |---|---|---|
-| >=80% of demo-critical objects localized correctly | No saved photos of intended objects | Unmeasured |
-| Median stable-keyframe inference <3 seconds | 1.336 s on final simple smoke run | Smoke only |
-| Ten consecutive requests without crash/OOM | Three runs of ten completed | Smoke only |
-| Ten common categories across several scenes | Two categories, two images | Incomplete |
+| >=80% of demo-critical objects localized correctly | 21/36 = 58.3% across three real layouts | Failed |
+| Median stable-keyframe inference <3 seconds | 1.834 s on the real tabletop run | Passed |
+| Ten consecutive requests without crash/OOM | 10/10 on the real tabletop run | Passed |
+| Ten common categories across several scenes | 12 descriptions across three distinct images | Passed |
 
 The complete gate is a conjunction. Missing evidence fails closed. Accuracy means
 recall over demo-critical ground-truth instances at exact normalized label + IoU >=0.5.
@@ -120,7 +128,7 @@ The benchmark also reports false positives and saves all predictions for inspect
 At least three distinct image contents and all intended critical labels are required.
 Native failure diagnostics and missing CUDA/memory evidence prevent a passing verdict.
 
-## Pending real-object test set
+## Real-object test set
 
 `benchmarks/locate_anything/demo-objects.json` records:
 
@@ -135,18 +143,20 @@ Native failure diagnostics and missing CUDA/memory evidence prevent a passing ve
 9. Black headphones
 10. Pen, proposed to reach ten categories
 
-Capture separated objects, then a rearranged scene with similar objects adjacent, then
-a changed orientation/clutter scene. Annotate visible objects independently before
-viewing model predictions. Include small-object and same-color confusions explicitly.
-The `black case` description may need a physical distinction from the AirPods case;
-measure the original descriptions first and record any prompt revision as a new run.
+The three captured scenes cover separated objects, similar items adjacent, and overlap/clutter. Small-object and
+same-color confusions were measured. The constrained beta therefore uses four large, visually distinct items and
+requires separation rather than relaxing the failed gate.
 
 ## Verification and artifacts
 
 The separate benchmark has 13 tests covering coordinate validation, exact threshold
 boundaries, one-to-one matching, duplicate detections, missing images, smoke-run
 rejection, worker crashes and process timeouts. All pass with ResourceWarnings treated
-as errors. Existing 68 app tests, typecheck and build also pass after the spike.
+as errors. The integrated app has 91 passing tests, including semantic identity validation,
+latest-request-wins scheduling, motion invalidation, ambiguous results, persistence, explicit fallback, worker
+crashes, and timeouts. Typecheck and production build pass. A real WebSocket run found all four recommended objects
+in `scene-1.jpg`, mapped their zones, preserved the semantic procedure across an explicit color fallback, and
+completed a warm rescan in 2.078 seconds. The original three-run color demo still passes after integration.
 
 A live browser rehearsal on isolated ports 5174/8011 reached `Procedure complete` after
 teaching red A-to-B, finishing early, restoring the layout and practicing the move.
@@ -171,16 +181,11 @@ Compact result JSON and report snapshots are retained under `evidence/`, includi
 [final smoke results](benchmarks/locate_anything/evidence/smoke-results.json) and
 [timeout results](benchmarks/locate_anything/evidence/timeout-results.json).
 
-## Only after the gate passes
+## Constrained beta architecture
 
-Introduce `Detector`, preserved `ColorDetector`, and `LocateAnythingDetector`, with
-configuration, health/readiness, deadlines and graceful failure. Schedule localization
-on settled scene changes, teach start, tracking-confidence loss, or explicit rescan.
-Use lightweight tracking between these calls. Pixel motion must trigger rescans
-independently of the existing color-based arrangement tracker, or unseen arbitrary
-objects would never trigger the first localization.
+`ColorDetector` preserves the original path. `LocateAnythingDetector` talks to one lazy, resident WSL/CUDA worker
+with startup/request deadlines and graceful termination. A `LatestScan` scheduler permits one active inference and
+one replaceable pending request; superseded or motion-invalidated results cannot grade or teach. Semantic scans are
+manual after the scene settles. A fallback must pause the active procedure before switching identity models.
 
-Do not reuse cached boxes to declare a new stable step while a rescan is pending.
-Do not switch semantic object identities to color IDs midway through an active
-procedure; a fallback must pause that procedure or explicitly restart in color mode.
-No Tiger Data, Gemini chat, organizations, locations or healthcare modes were added.
+No Tiger Data, Gemini chat, organizations, locations, or healthcare modes were added in this unit.

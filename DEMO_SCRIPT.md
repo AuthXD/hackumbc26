@@ -38,4 +38,15 @@ TeachBack turns red and says it out loud: *"Skipped step 2. Expected: … Observ
   steps; ElevenLabs only speaks.
 - *Hands in the way?* Hands moving or covering an object is a "waiting" state, never an error.
 - *Other mistakes?* Wrong object, right object in the wrong zone, and steps done too early are all caught (show one).
-- *Tests?* `npm test` runs 68 tests. `npm run demo:check` replays three full demos with different mistakes.
+- *Tests?* `npm test` runs 91 tests. `npm run demo:check` replays three full demos with different mistakes.
+
+## Optional semantic-object variant
+
+Keep the color script above as the reliable 60-second judging path. If there is time to show the local AI model,
+enable `TEACHBACK_SEMANTIC_BETA=1`, select **Semantic Objects · Beta**, and use exactly: blue water bottle, brown
+wallet, green smartwatch, blue smartphone. Spread them across the black mat with no overlap. Press **Teach**, wait
+for **Stable**, then press **Scan Objects**. After each move, hands off and press **Scan Objects** again. Pre-warm
+the model before judges arrive; the verified warm scan is about 2 seconds. Do not demonstrate stacking in this mode.
+
+If it cannot see exactly one of every requested object, separate the objects and retry. If the worker fails, press
+**Pause procedure**, select **Color**, and continue with the primary demo. The semantic procedure remains saved.

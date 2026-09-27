@@ -13,7 +13,7 @@ type View = {
 
 function sceneSummary(u: ServerUpdate): string {
   const objs = u.scene?.objects.filter((o) => o.visible) ?? [];
-  if (!objs.length) return "No colored objects in view.";
+  if (!objs.length) return u.detector?.kind === "semantic" ? "No current semantic scan." : "No colored objects in view.";
   return objs.map((o) => `${o.id} ${o.stackedOn ? `on ${o.stackedOn}` : o.zone ? `in ${o.zone}` : "outside"}`).join(" · ");
 }
 
@@ -22,6 +22,25 @@ export function statusView(u: ServerUpdate | null): View {
     return { tone: "neutral", eyebrow: "Connecting", headline: "Starting up…", expected: "", observed: "" };
   }
   const tracker = u.tracker;
+  if (u.detector?.kind === "semantic" && u.detector.scanState !== "valid") {
+    const d = u.detector;
+    return {
+      tone: d.scanState === "error" ? "error" : "warning",
+      eyebrow: "Semantic Objects · Beta · Waiting",
+      headline: d.workerState === "loading" ? "Loading object detector…"
+        : d.scanState === "scanning" ? "Scanning objects…"
+        : d.scanState === "ambiguous" ? "Separate the objects and rescan"
+        : d.scanState === "error" ? "Object detector unavailable" : "Scan the settled table",
+      expected: "Keep all requested objects separated and fully visible. Scan after each move.",
+      observed: d.message,
+      fix: d.scanState === "error" ? "Retry Scan Objects, or pause the procedure and explicitly switch to Color mode." : undefined,
+    };
+  }
+  if (u.procedure && u.detector && u.procedure.detectorKind !== u.detector.kind) {
+    return { tone: "warning", eyebrow: "Saved procedure paused", headline: "Procedure preserved",
+      expected: `Switch to ${u.procedure.detectorKind === "semantic" ? "Semantic Objects" : "Color"} mode to practice it.`,
+      observed: "Starting a new teaching session will replace the saved procedure." };
+  }
   const activity =
     tracker?.status === "moving"
       ? "Hands moving — waiting for the table to settle."
@@ -81,7 +100,8 @@ export function statusView(u: ServerUpdate | null): View {
     tone: "neutral",
     eyebrow: "Ready",
     headline: "Press Teach to begin",
-    expected: "Put the colored objects in their starting zones.",
+    expected: u.detector?.kind === "semantic" ? "Put the requested objects in their starting zones. Scan after pressing Teach."
+      : "Put the colored objects in their starting zones.",
     observed: sceneSummary(u),
   };
 }

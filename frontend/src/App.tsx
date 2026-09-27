@@ -11,6 +11,7 @@ import { useFrameStream } from "./useFrameStream";
 type Source = "camera" | "sim";
 
 const CAL_ORDER = ["red", "yellow", "green", "blue"];
+const DEFAULT_OBJECTS = "blue water bottle, brown wallet, green smartwatch, blue smartphone";
 
 const TRACKER_LABEL: Record<TrackerStatus, string> = {
   stable: "Stable",
@@ -31,6 +32,7 @@ export default function App() {
   const [aspect, setAspect] = useState(4 / 3);
   const [fps, setFps] = useState(0);
   const [calibrating, setCalibrating] = useState<string | null>(null); // color being calibrated
+  const [objectDescriptions, setObjectDescriptions] = useState(DEFAULT_OBJECTS);
   const frameTimes = useRef<number[]>([]);
 
   const onMessage = useCallback((m: ServerUpdate) => {
@@ -54,6 +56,15 @@ export default function App() {
   );
 
   const command = useCallback((action: string) => send({ type: "command", action }), [send]);
+  const detector = u?.detector;
+  const semantic = detector?.kind === "semantic";
+  const configuredObjects = detector?.labels.join(", ");
+  useEffect(() => {
+    if (configuredObjects) setObjectDescriptions(configuredObjects);
+  }, [configuredObjects]);
+  useEffect(() => {
+    if (semantic) setCalibrating(null);
+  }, [semantic]);
 
   useEffect(() => {
     speaker.muted = muted;
@@ -125,12 +136,14 @@ export default function App() {
             <button className={source === "camera" ? "on" : ""} onClick={() => setSource("camera")}>
               Camera
             </button>
-            <button className={source === "sim" ? "on" : ""} onClick={() => setSource("sim")}>
+            <button className={source === "sim" ? "on" : ""} disabled={semantic} onClick={() => setSource("sim")}
+              title={semantic ? "Switch to Color mode to use the simulator" : undefined}>
               Simulator
             </button>
           </div>
           <button
             className="ghost"
+            disabled={semantic}
             aria-pressed={!!calibrating}
             onClick={() => setCalibrating((c) => (c ? null : CAL_ORDER[0]))}
           >
@@ -142,8 +155,45 @@ export default function App() {
         </div>
       </header>
 
+      {(detector?.betaEnabled || u?.procedure?.detectorKind === "semantic") && (
+        <section className="semantic-controls" aria-label="Object detector">
+          <div className="semantic-toolbar">
+            <div className="segmented" role="group" aria-label="Detector mode">
+              <button className={!semantic ? "on" : ""} disabled={detector?.switchLocked}
+                onClick={() => send({ type: "detector", kind: "color" })}>Color</button>
+              <button className={semantic ? "on" : ""}
+                disabled={!detector?.betaEnabled || detector.switchLocked || source === "sim"}
+                onClick={() => send({ type: "detector", kind: "semantic", labels: objectDescriptions })}>
+                Semantic Objects <span className="beta-badge">Beta</span>
+              </button>
+            </div>
+            {semantic && <span className="pill">Model: {detector?.workerState}</span>}
+            {semantic && mode !== "idle" && <button className="ghost" onClick={() => command("pause")}>Pause procedure</button>}
+          </div>
+          {semantic && <>
+            <label className="object-input">Object descriptions
+              <input value={objectDescriptions} maxLength={485}
+                disabled={mode !== "idle" || u?.procedure?.detectorKind === "semantic"}
+                onChange={(e) => setObjectDescriptions(e.target.value)} />
+            </label>
+            <div className="semantic-toolbar">
+              <button className="ghost" disabled={mode !== "idle" || u?.procedure?.detectorKind === "semantic"}
+                onClick={() => send({ type: "detector", kind: "semantic", labels: objectDescriptions })}>Apply objects</button>
+              <button className="btn" disabled={!detector?.canScan || source !== "camera"}
+                onClick={() => command("scan")}>{detector?.scanState === "scanning" ? "Replace pending scan" : "Scan Objects"}</button>
+              <span className="hint">2–6 unique descriptions. Choose large, distinct objects. Keep objects separated and fully visible.</span>
+            </div>
+            <p className="hint">Manual scans only. Hold still and scan the starting layout and each move. Stacking is unsupported.</p>
+            {detector?.scanState === "error" && <p className="semantic-error" role="alert">
+              {detector.message} Your procedure is preserved. {mode !== "idle" ? "Pause it, then select Color above." : "Select Color above to use the fallback."}
+            </p>}
+          </>}
+        </section>
+      )}
+
       <nav className="controls" aria-label="Mode controls">
-        <button className={`btn teach ${mode === "teaching" ? "active" : ""}`} onClick={() => command("teach")}>
+        <button className={`btn teach ${mode === "teaching" ? "active" : ""}`}
+          disabled={semantic && (source !== "camera" || objectDescriptions !== configuredObjects)} onClick={() => command("teach")}>
           Teach
         </button>
         <button className="btn" disabled={!canFinish} onClick={() => command("finish")}>
@@ -156,7 +206,7 @@ export default function App() {
         )}
         <button
           className={`btn practice ${mode === "practicing" ? "active" : ""}`}
-          disabled={!hasProcedure || mode === "teaching"}
+          disabled={!hasProcedure || mode === "teaching" || (u?.procedure?.detectorKind !== detector?.kind)}
           onClick={() => command("practice")}
         >
           {mode === "practicing" ? "Restart Practice" : "Practice"}
@@ -222,8 +272,8 @@ export default function App() {
               <div className="camera-error">
                 <strong>Camera unavailable</strong>
                 <span>{error}</span>
-                <button className="btn" onClick={() => setSource("sim")}>
-                  Use the simulator
+                <button className="btn" disabled={semantic} onClick={() => setSource("sim")}>
+                  {semantic ? "Select Color mode to use the simulator" : "Use the simulator"}
                 </button>
               </div>
             )}
@@ -263,7 +313,7 @@ export default function App() {
                 <td>
                   {o.center[0].toFixed(2)}, {o.center[1].toFixed(2)}
                 </td>
-                <td>{Math.round(o.confidence * 100)}%</td>
+                <td>{o.kind === "color" ? `${Math.round(o.confidence * 100)}%` : "Not provided"}</td>
               </tr>
             ))}
           </tbody>

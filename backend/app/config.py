@@ -100,6 +100,12 @@ class Settings:
     vision: VisionConfig = field(default_factory=VisionConfig)
     stability: StabilityConfig = field(default_factory=StabilityConfig)
     procedure: ProcedureConfig = field(default_factory=ProcedureConfig)
+    semantic_beta: bool = field(default_factory=lambda: os.getenv("TEACHBACK_SEMANTIC_BETA") == "1")
+    locate_distro: str = field(default_factory=lambda: os.getenv("LOCATE_WSL_DISTRO", "Ubuntu"))
+    locate_model: str = field(default_factory=lambda: os.getenv("LOCATE_MODEL", "/home/authxd/models/locate-anything-q6_k.gguf"))
+    locate_library: str = field(default_factory=lambda: os.getenv("LOCATE_LIBRARY", str(REPO_ROOT / "benchmarks/locate_anything/build/liblocate_anything.so")))
+    locate_startup_timeout: float = 120.0
+    locate_request_timeout: float = 10.0
     gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", "").strip())
     gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL") or "gemini-3.5-flash".strip())
     elevenlabs_api_key: str = field(default_factory=lambda: os.getenv("ELEVENLABS_API_KEY", "").strip())

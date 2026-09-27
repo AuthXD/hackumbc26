@@ -4,14 +4,15 @@ export type Placement = { zone: string | null; stackedOn: string | null };
 
 export type SceneObject = {
   id: string;
-  color: string;
   center: [number, number];
   bbox: [number, number, number, number];
   zone: string | null;
   visible: boolean;
   stackedOn: string | null;
-  confidence: number;
-};
+} & (
+  | { kind: "color"; color: string; label: null; confidence: number }
+  | { kind: "semantic"; color: null; label: string; confidence: null }
+);
 
 export type SceneState = { objects: SceneObject[]; capturedAt: number; stableSince: number | null };
 
@@ -28,7 +29,19 @@ export type LearnedStep = {
   aiDescription: StepText | null;
 };
 
-export type Procedure = { trackedIds: string[]; steps: LearnedStep[] };
+export type Procedure = { detectorKind: "color" | "semantic"; trackedIds: string[]; steps: LearnedStep[] };
+
+export type DetectorState = {
+  kind: "color" | "semantic";
+  betaEnabled: boolean;
+  labels: string[];
+  workerState: "unloaded" | "loading" | "ready" | "error";
+  scanState: "idle" | "scanning" | "valid" | "ambiguous" | "error";
+  message: string;
+  canScan: boolean;
+  switchLocked: boolean;
+  procedureKind: "color" | "semantic" | null;
+};
 
 export type PracticeStatus = "setup" | "waiting" | "step_complete" | "error" | "complete";
 
@@ -67,6 +80,7 @@ export type SpeakEvent = { kind: "speak"; text: string; priority: "info" | "succ
 export type ServerUpdate = {
   type: "update";
   mode?: Mode;
+  detector?: DetectorState;
   scene?: SceneState | null;
   zones?: Zone[];
   tracker?: Tracker | null;
