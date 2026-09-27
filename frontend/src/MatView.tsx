@@ -1,3 +1,4 @@
+import type { CSSProperties, ReactNode } from "react";
 import { Overlay } from "./Overlay";
 import type { MatState, MatStatus, SceneState, Zone } from "./types";
 
@@ -147,7 +148,33 @@ export function MatUnavailable({ display, onRecalibrate }: { display: MatDisplay
   </div>;
 }
 
-/** The tracked outline over the raw picture (inset while the stabilized mat is shown). */
+/** Stabilized landscape mat beside the raw phone picture. Status sits under the mat, not on it. */
+export function MatLayout({ stabilized, picture, raw, status, frameStyle }: {
+  stabilized: boolean;
+  picture: ReactNode;
+  raw: ReactNode;
+  status: ReactNode;
+  frameStyle?: CSSProperties;
+}) {
+  if (!stabilized) {
+    return <div className="camera-frame mat-raw-main" data-layout="raw" style={frameStyle}>
+      {raw}
+      {status}
+    </div>;
+  }
+  return <div className="mat-workspace" data-layout="landscape">
+    <div className="mat-canonical">
+      <div className="mat-picture" data-testid="mat-picture">{picture}</div>
+      <div className="mat-status-bar" data-testid="mat-status-bar">{status}</div>
+    </div>
+    <aside className="raw-preview" data-testid="raw-preview" aria-label="Raw phone view">
+      {raw}
+      <span className="raw-label">Raw phone view</span>
+    </aside>
+  </div>;
+}
+
+/** The tracked outline over the raw picture. */
 export function RawQuad({ corners, state }: { corners: [number, number][] | null; state: MatStatus["state"] }) {
   if (!corners) return null;
   return <svg className="raw-quad" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>

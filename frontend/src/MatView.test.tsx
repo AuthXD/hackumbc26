@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   addPoint, CALIBRATION_REPLY_MS, calibrationReply, LANDMARK_STEPS, MAT_VIEW_STALE_MS, MatCalibrationBar, MatChip,
-  matDisplay, MatUnavailable, RawQuad, StabilizedMat, undoPoint, type Pt,
+  MatClickLayer, MatLayout, matDisplay, MatUnavailable, RawQuad, StabilizedMat, undoPoint, type Pt,
 } from "./MatView";
 import { PhoneLinkButton } from "./PhoneLink";
 import { statusView, WORKER_LABEL } from "./StatusCard";
@@ -200,6 +200,41 @@ describe("semantic model readiness labels", () => {
     expect(broken.fix).toMatch(/Retry loading/);
     expect(broken.observed).toContain("unavailable");
   });
+});
+
+describe("landscape mat layout", () => {
+  it("keeps the raw preview and the tracking status off the canonical picture", () => {
+    const html = renderToStaticMarkup(<MatLayout stabilized
+      picture={<img alt="Stabilized top-down mat" />}
+      raw={<div className="raw-layer" />}
+      status={<MatChip display={matDisplay(mat(), live)} />} />);
+    expect(html).toContain('data-layout="landscape"');
+    expect(html).not.toContain("inset");
+    expect(html).toContain("Raw phone view");
+    const picture = html.slice(html.indexOf('data-testid="mat-picture"'), html.indexOf('data-testid="mat-status-bar"'));
+    expect(picture).toContain("Stabilized top-down mat");
+    expect(picture).not.toContain("Mat tracking");
+    expect(picture).not.toContain("raw-preview");
+    expect(html.indexOf('data-testid="mat-status-bar"')).toBeLessThan(html.indexOf('data-testid="raw-preview"'));
+  });
+
+  it("puts Hold still under the picture, and calibration clicks stay on the raw view", () => {
+    const hold = renderToStaticMarkup(<MatLayout stabilized
+      picture={<img alt="Stabilized top-down mat" />}
+      raw={<div className="raw-layer" />}
+      status={<MatChip display={matDisplay(mat({ state: "unsteady", message: "Hold the phone still." }), live)} />} />);
+    const picture = hold.slice(hold.indexOf('data-testid="mat-picture"'), hold.indexOf('data-testid="mat-status-bar"'));
+    expect(picture).not.toContain("Hold still");
+    expect(hold).toContain("Hold still");
+
+    const raw = renderToStaticMarkup(<MatLayout stabilized={false} picture={null}
+      raw={<div className="raw-layer"><MatClickLayer points={[]} onAdd={() => undefined} /></div>}
+      status={null} />);
+    expect(raw).toContain('data-layout="raw"');
+    expect(raw).toContain('data-testid="mat-click"');
+    expect(raw).not.toContain("raw-preview");
+  });
+
 });
 
 describe("phone state labels", () => {

@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from app.config import MatConfig, VisionConfig
+from app.config import REPO_ROOT, MatConfig, VisionConfig
 from app.mat import (
     MatCalibration,
     MatService,
@@ -16,6 +16,7 @@ from app.mat import (
     canonical_vision,
     canonical_zones,
     homography_to_canonical,
+    prepare_saved_calibration,
     in_workspace,
     mask_band,
     quad_problem,
@@ -49,7 +50,8 @@ def test_valid_quad_and_normalized_calibration():
     assert all(0 <= c <= 1 for p in cal.points for c in p)
     assert (cal.frame_width, cal.frame_height) == (W, H)
     cw, ch = cal.canonical_size
-    assert ch == CFG.canonical_long_side and cw / ch == pytest.approx(455 / 960, abs=0.02)
+    assert cw > ch and cw == CFG.canonical_long_side and ch / cw == pytest.approx(455 / 960, abs=0.02)
+    assert cal.orientation == "landscape-ccw"
 
 
 @pytest.mark.parametrize("points,reason", [
@@ -80,25 +82,49 @@ def test_calibration_model_rejects_malformed_data():
             MatCalibration.model_validate(bad)
 
 
-def test_homography_maps_landmarks_to_canonical_corners():
+def test_portrait_quad_rotates_ccw_into_a_landscape_canonical():
+    across, down = (np.linalg.norm(GOOD[1] - GOOD[0]) + np.linalg.norm(GOOD[2] - GOOD[3])) / 2, (
+        np.linalg.norm(GOOD[3] - GOOD[0]) + np.linalg.norm(GOOD[2] - GOOD[1])) / 2
     size = canonical_size(GOOD, 960)
+    assert size[0] > size[1]
+    assert size[0] / size[1] == pytest.approx(down / across, rel=0.02)  # the short edge is not stretched
     Hm = homography_to_canonical(GOOD, size)
     mapped = cv2.perspectiveTransform(GOOD.reshape(-1, 1, 2), Hm).reshape(-1, 2)
-    assert mapped == pytest.approx(np.array([[0, 0], [size[0], 0], [size[0], size[1]], [0, size[1]]]), abs=1e-6)
+    w, h = size
+    # raw TL, TR, BR, BL → canonical BL, TL, TR, BR
+    assert mapped == pytest.approx(np.array([[0, h], [0, 0], [w, 0], [w, h]]), abs=1e-3)
+    zones = canonical_zones(size, 0.1)
+
+    def zone_at(point):
+        hit = cv2.perspectiveTransform(np.float32([[point]]), Hm)[0, 0]
+        nx, ny = float(hit[0] / w), float(hit[1] / h)
+        return next(z.id for z in zones if z.contains(nx, ny))
+
+    center = GOOD.mean(axis=0)
+    top = (GOOD[0] + GOOD[1]) / 2
+    bottom = (GOOD[3] + GOOD[2]) / 2
+    assert zone_at(top * 0.72 + center * 0.28) == "A"  # physical top third → left
+    assert zone_at(center) == "B"
+    assert zone_at(bottom * 0.72 + center * 0.28) == "C"  # physical bottom third → right
 
 
-def test_canonical_zones_live_inside_the_workspace():
-    portrait = canonical_zones((400, 960), 0.1)
-    assert [z.id for z in portrait] == ["A", "B", "C"]
-    assert all(z.x == 0.1 and z.w == pytest.approx(0.8) for z in portrait)  # rows along the long axis
-    assert portrait[0].y == pytest.approx(0.1) and portrait[2].y + portrait[2].h == pytest.approx(0.9)
-    landscape = canonical_zones((960, 400), 0.1)
-    assert all(z.y == 0.1 and z.h == pytest.approx(0.8) for z in landscape)  # columns
+def test_raw_preview_is_not_an_overlay_and_stacks_on_a_narrow_window():
+    css = (REPO_ROOT / "frontend/src/styles.css").read_text(encoding="utf-8")
+    assert "raw-layer.inset" not in css
+    rule = css.split("@media (max-width: 800px)", 1)[1]
+    assert "grid-template-columns: 1fr" in rule.split("}", 1)[0] or "grid-template-columns: 1fr" in rule[:400]
+
+
+def test_canonical_zones_run_left_to_right():
+    zones = canonical_zones((960, 400), 0.1)
+    assert [z.id for z in zones] == ["A", "B", "C"]
+    assert all(z.y == pytest.approx(0.1) and z.h == pytest.approx(0.8) for z in zones)
+    assert zones[0].x == pytest.approx(0.1) and zones[2].x > zones[1].x > zones[0].x
     assert in_workspace(0.5, 0.5, 0.1) and not in_workspace(0.05, 0.5, 0.1) and not in_workspace(0.5, 0.95, 0.1)
-    vision = canonical_vision(VisionConfig(), (400, 960), 0.1)
+    vision = canonical_vision(VisionConfig(), (960, 400), 0.1)
     assert [z.id for z in vision.zones] == ["A", "B", "C"] and VisionConfig().zones[0].y == 0.12
-    masked = mask_band(np.full((100, 50, 3), 200, np.uint8), 0.1)
-    assert masked[:10].max() == 0 and masked[:, :5].max() == 0 and masked[50, 25].min() == 200
+    masked = mask_band(np.full((400, 960, 3), 200, np.uint8), 0.1)
+    assert masked[:, :96].max() == 0 and masked[:40].max() == 0 and masked[200, 480].min() == 200
 
 
 # -- tracking --------------------------------------------------------------------------------------
@@ -226,6 +252,37 @@ def test_camera_view_change_asks_for_recalibration():
 
 
 # -- persistence -----------------------------------------------------------------------------------
+
+
+def test_saved_portrait_calibration_rotates_and_a_wide_one_is_rejected(tmp_path):
+    folder = tmp_path / "mat"
+    fresh = MatService(CFG, folder)
+    fresh.calibrate("phone", frame(WORLD_BLOCK, H0), normalized_landmarks(H0))
+    saved = json.loads((folder / "phone.json").read_text(encoding="utf-8"))
+    assert saved["canonicalWidth"] > saved["canonicalHeight"]
+    portrait = {**saved, "version": 1, "canonicalWidth": saved["canonicalHeight"],
+                "canonicalHeight": saved["canonicalWidth"]}
+    portrait.pop("orientation", None)
+    (folder / "phone.json").write_text(json.dumps(portrait), encoding="utf-8")
+    migrated = MatService(CFG, folder)
+    cal = migrated.calibration("phone")
+    assert cal is not None and cal.canonical_width > cal.canonical_height and cal.orientation == "landscape-ccw"
+    warped = run(migrated, H0)
+    assert warped.canonical is not None and warped.canonical.shape[1] > warped.canonical.shape[0]
+    on_disk = json.loads((folder / "phone.json").read_text(encoding="utf-8"))
+    assert on_disk["orientation"] == "landscape-ccw" and on_disk["canonicalWidth"] > on_disk["canonicalHeight"]
+
+    wide = {**saved, "version": 1, "canonicalWidth": 960, "canonicalHeight": 400}
+    wide.pop("orientation")
+    (folder / "phone.json").write_text(json.dumps(wide), encoding="utf-8")
+    rejected = MatService(CFG, folder)
+    assert rejected.calibration("phone") is None
+    problem = rejected.process("phone", frame(WORLD_BLOCK, H0), 0)
+    assert problem.state == "recalibrate" and "Recalibrate mat" in problem.message and problem.canonical is None
+
+    broken = {**saved, "orientation": "landscape-ccw", "canonicalWidth": 400, "canonicalHeight": 960}
+    with pytest.raises(ValueError, match="Recalibrate mat"):
+        prepare_saved_calibration(broken)
 
 
 def test_calibration_persists_per_camera_and_malformed_files_fail_closed(tmp_path):

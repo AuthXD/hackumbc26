@@ -33,8 +33,13 @@ phone stops sending or disconnects, the laptop may send again. One async lock se
 
 Calibration stores four clicks, in order: top-left purple creature, top-right frog, bottom-right potion bottle,
 bottom-left SteelSeries logo. `quad_problem` rejects a bad order or a quadrilateral that is too small, crossed, or
-too skewed. A valid quad is warped to a canonical image whose long side is `canonical_long_side` (960). The outer
-`band_fraction` (0.10) is painted out before detection. Zones A/B/C are laid out inside the remaining area.
+too skewed. A valid quad is warped to a canonical image whose long side is `canonical_long_side` (960). A portrait
+phone photo is rotated counterclockwise, so the canonical image is landscape: raw TL, TR, BR, and BL land on
+canonical bottom-left, top-left, top-right, and bottom-right. Zone A is the physical top third and sits on the
+left; Zone C is the physical bottom third and sits on the right. The short edge is not stretched. The outer
+`band_fraction` (0.10) is painted out before detection. A saved version-1 portrait calibration is rewritten to
+this layout. A saved calibration that is already wider than tall, or a landscape file whose height is not the
+short side, is rejected and the UI asks to recalibrate.
 
 The tracker (pyramidal Lucas-Kanade, RANSAC homography, ORB re-acquisition) fails closed. `trustworthy` is false
 while the view is unsteady, lost, or waiting to be recalibrated. The UI asks for `/api/mat-view.jpg` only while

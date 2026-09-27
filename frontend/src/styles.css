@@ -179,9 +179,28 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
   font-weight: 800; pointer-events: none;
 }
 .raw-layer { position: absolute; inset: 0; }
-.raw-layer.inset {
-  inset: 10px 10px auto auto; width: 34%; z-index: 2; border-radius: 10px; overflow: hidden;
-  border: 2px solid rgba(255, 255, 255, 0.7); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5); background: #000;
+.mat-workspace {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, 26%); gap: 12px; align-items: start;
+  width: min(100%, calc(var(--cam-h) * 1.85));
+}
+.mat-picture-frame {
+  position: relative; width: 100%; background: #000; border-radius: var(--radius); overflow: hidden;
+  border: 1px solid var(--line);
+}
+.mat-status-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-height: 34px; }
+.mat-status-bar .tracker-chip, .mat-status-bar .mat-chip { position: static; left: auto; right: auto; bottom: auto; }
+.raw-preview { position: relative; min-width: 0; }
+.raw-preview .raw-layer {
+  position: relative; width: 100%; background: #000; border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--line);
+}
+.raw-label {
+  position: absolute; left: 8px; top: 8px; z-index: 2; padding: 3px 8px; border-radius: 999px;
+  background: rgba(8, 11, 16, 0.82); font-size: 12px; font-weight: 700;
+}
+@media (max-width: 800px) {
+  .mat-workspace { grid-template-columns: 1fr; width: 100%; }
+  .raw-preview { width: min(240px, 70%); }
 }
 .raw-quad polygon { fill: rgba(52, 211, 153, 0.12); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .raw-quad .quad-ok { stroke: var(--success); }

@@ -70,11 +70,12 @@ def test_color_detection_uses_canonical_mat_coordinates_despite_camera_motion():
         snap = feed(s, COLOR_WORLD, move @ H0, frames=8, t0=20)
         assert snap["mat"]["state"] == "tracking" and snap["mat"]["trustworthy"], snap["mat"]["message"]
         assert [z["id"] for z in snap["zones"]] == ["A", "B", "C"]
-        assert all(z["x"] == pytest.approx(0.1) for z in snap["zones"])  # canonical rows, not camera columns
+        assert all(z["y"] == pytest.approx(0.1) for z in snap["zones"])  # columns, A on the left
         objects = {o["id"]: o for o in snap["scene"]["objects"]}
         assert set(objects) == {"red", "blue"}  # the colored stickers sit in the masked band
         assert (objects["red"]["zone"], objects["blue"]["zone"]) == ("A", "C")
-        assert objects["red"]["center"] == pytest.approx([0.5, 0.2], abs=0.02)
+        assert objects["red"]["center"][0] < objects["blue"]["center"][0]
+        assert objects["red"]["center"] == pytest.approx([0.2, 0.5], abs=0.08)
         assert snap["mat"]["viewSeq"] > 0 and s.mat_view_jpeg is not None
 
 
@@ -110,6 +111,22 @@ def test_unsteady_snapshots_are_strict_json():
     json.dumps(snap, allow_nan=False)  # the browser's JSON.parse rejects Infinity
 
 
+def test_physical_thirds_become_zones_a_b_c_left_to_right():
+    placed = world({"red": (0.5, 0.18), "yellow": (0.5, 0.5), "blue": (0.5, 0.82)})
+    s = Session(persist=False)
+    try:
+        calibrate(s, placed)
+        snap = feed(s, placed, H0, frames=8)
+        assert snap["mat"]["canonicalAspect"] > 1
+        zones = {o["id"]: o["zone"] for o in snap["scene"]["objects"]}
+        assert zones["red"] == "A" and zones["yellow"] == "B" and zones["blue"] == "C"
+        centers = {o["id"]: o["center"][0] for o in snap["scene"]["objects"]}
+        assert centers["red"] < centers["yellow"] < centers["blue"]
+        assert s.process_frame(jpeg(frame(placed, H0)), 1.0, "sim")["mat"]["state"] == "off"
+    finally:
+        s.close()
+
+
 # -- semantic path --------------------------------------------------------------------------------------
 
 
@@ -122,11 +139,16 @@ def test_semantic_scans_receive_the_masked_canonical_mat_and_canonical_zones():
         assert snap["detector"]["scanState"] == "valid", snap["detector"]["message"]
         image = detector.images[-1]
         cal = s.mat.calibration("phone")
+        assert image.shape[1] > image.shape[0]  # landscape canonical pixels
         assert image.shape[:2] == (cal.canonical_height, cal.canonical_width)
-        band = round(cal.canonical_height * 0.1)
-        assert image[:band].max() == 0 and image[-band:].max() == 0  # landmark band blacked out
+        band_y = round(cal.canonical_height * 0.1)
+        band_x = round(cal.canonical_width * 0.1)
+        assert image[:band_y].max() == 0 and image[:, :band_x].max() == 0
         zones = {o["id"]: o["zone"] for o in snap["scene"]["objects"]}
-        assert zones == {"blue bottle": "A", "brown wallet": "B"}  # re-zoned in canonical coordinates
+        # Boxes are in the landscape image: x=0.15 is the left third, x=0.8 is the right third.
+        assert zones == {"blue bottle": "A", "brown wallet": "C"}
+        centers = {o["id"]: o["center"] for o in snap["scene"]["objects"]}
+        assert centers["blue bottle"][0] < 0.4 and centers["brown wallet"][0] > 0.6
     finally:
         s.close()
 

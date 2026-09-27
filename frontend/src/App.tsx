@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  addPoint, calibrationReply, matDisplay, MatCalibrationBar, MatChip, MatClickLayer, MatUnavailable, RawQuad,
+  addPoint, calibrationReply, matDisplay, MatCalibrationBar, MatChip, MatClickLayer, MatLayout, MatUnavailable, RawQuad,
   StabilizedMat, undoPoint, type Pt,
 } from "./MatView";
 import { Overlay } from "./Overlay";
@@ -392,68 +392,73 @@ export default function App() {
               }}
             />
           )}
-          <div
-            className="camera-frame"
-            style={{ aspectRatio: String(frameAspect), width: `min(100%, calc(var(--cam-h) * ${frameAspect}))` }}
-          >
-            {stabilized && mat && (
-              <StabilizedMat mat={mat} scene={u?.scene ?? undefined} zones={u?.zones ?? []} activeZones={activeZones}
-                onError={() => setMatViewFailed(mat.viewSeq)} />
-            )}
-            {/* The raw picture stays mounted (the <video> owns the camera stream); it shrinks to an inset. */}
-            <div className={`raw-layer ${stabilized ? "inset" : ""}`}
-              style={stabilized ? { aspectRatio: String(aspect) } : undefined}>
-              <video ref={videoRef} muted playsInline className="camera-media"
-                hidden={source !== "camera" || (phoneOwns && !!remoteFrame)} />
-              {phoneOwns && remoteFrame && <img src={remoteFrame} alt="Live phone camera"
-                className="camera-media" onLoad={(event) => {
-                  const image = event.currentTarget;
-                  if (image.naturalWidth) setAspect(image.naturalWidth / image.naturalHeight);
-                }} />}
-              {source === "sim" && <Simulator ref={simRef} zones={u?.zones ?? []} />}
-              {display.rawZones && !calibratingMat && (
-                <Overlay scene={u?.scene ?? undefined} zones={u?.zones ?? []} activeZones={activeZones} />
-              )}
-              {stabilized && <RawQuad corners={mat?.corners ?? null} state={mat?.state ?? "off"} />}
-              {matPoints && <MatClickLayer points={matPoints} onAdd={(p) => editMatPoints(addPoint(matPoints, p))} />}
-            </div>
-            {display.blocksVerdict && !calibratingMat && (
-              <MatUnavailable display={display} onRecalibrate={startMatCalibration} />
-            )}
-            {calibrating && (
-              <div
-                className="calibrate-capture"
-                onClick={(e) => {
-                  const r = e.currentTarget.getBoundingClientRect();
-                  send({
-                    type: "calibrate",
-                    color: calibrating,
-                    x: (e.clientX - r.left) / r.width,
-                    y: (e.clientY - r.top) / r.height,
-                  });
-                  const next = CAL_ORDER[CAL_ORDER.indexOf(calibrating) + 1];
-                  setCalibrating(next ?? null);
-                }}
-              />
-            )}
-            {tracker && (
-              <span className={`tracker-chip t-${tracker.status}`}>
-                <i />
-                {TRACKER_LABEL[tracker.status]}
-                {tracker.status === "occluded" && tracker.missing.length ? `: ${tracker.missing.join(", ")}` : ""}
-              </span>
-            )}
-            <MatChip display={display} />
-            {cameraProblem && (
-              <div className="camera-error">
-                <strong>Camera unavailable</strong>
-                <span>{error}</span>
-                <button className="btn" disabled={semantic} onClick={() => setSource("sim")}>
-                  {semantic ? "Select Color mode to use the simulator" : "Use the simulator"}
-                </button>
+          <MatLayout
+            stabilized={stabilized}
+            frameStyle={stabilized ? undefined : {
+              aspectRatio: String(aspect), width: `min(100%, calc(var(--cam-h) * ${aspect}))`,
+            }}
+            picture={stabilized && mat ? (
+              <div className="mat-picture-frame" style={{ aspectRatio: String(frameAspect) }}>
+                <StabilizedMat mat={mat} scene={u?.scene ?? undefined} zones={u?.zones ?? []} activeZones={activeZones}
+                  onError={() => setMatViewFailed(mat.viewSeq)} />
               </div>
-            )}
-          </div>
+            ) : null}
+            raw={
+              <div className="raw-layer" style={stabilized ? { aspectRatio: String(aspect) } : undefined}>
+                <video ref={videoRef} muted playsInline className="camera-media"
+                  hidden={source !== "camera" || (phoneOwns && !!remoteFrame)} />
+                {phoneOwns && remoteFrame && <img src={remoteFrame} alt="Live phone camera"
+                  className="camera-media" onLoad={(event) => {
+                    const image = event.currentTarget;
+                    if (image.naturalWidth) setAspect(image.naturalWidth / image.naturalHeight);
+                  }} />}
+                {source === "sim" && <Simulator ref={simRef} zones={u?.zones ?? []} />}
+                {display.rawZones && !calibratingMat && (
+                  <Overlay scene={u?.scene ?? undefined} zones={u?.zones ?? []} activeZones={activeZones} />
+                )}
+                {stabilized && <RawQuad corners={mat?.corners ?? null} state={mat?.state ?? "off"} />}
+                {matPoints && <MatClickLayer points={matPoints} onAdd={(p) => editMatPoints(addPoint(matPoints, p))} />}
+                {display.blocksVerdict && !calibratingMat && (
+                  <MatUnavailable display={display} onRecalibrate={startMatCalibration} />
+                )}
+                {calibrating && (
+                  <div
+                    className="calibrate-capture"
+                    onClick={(e) => {
+                      const r = e.currentTarget.getBoundingClientRect();
+                      send({
+                        type: "calibrate",
+                        color: calibrating,
+                        x: (e.clientX - r.left) / r.width,
+                        y: (e.clientY - r.top) / r.height,
+                      });
+                      const next = CAL_ORDER[CAL_ORDER.indexOf(calibrating) + 1];
+                      setCalibrating(next ?? null);
+                    }}
+                  />
+                )}
+                {cameraProblem && (
+                  <div className="camera-error">
+                    <strong>Camera unavailable</strong>
+                    <span>{error}</span>
+                    <button className="btn" disabled={semantic} onClick={() => setSource("sim")}>
+                      {semantic ? "Select Color mode to use the simulator" : "Use the simulator"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            }
+            status={<>
+              {tracker && (
+                <span className={`tracker-chip t-${tracker.status}`}>
+                  <i />
+                  {TRACKER_LABEL[tracker.status]}
+                  {tracker.status === "occluded" && tracker.missing.length ? `: ${tracker.missing.join(", ")}` : ""}
+                </span>
+              )}
+              <MatChip display={display} />
+            </>}
+          />
           {source === "sim" && (
             <p className="hint">Simulator: drag blocks between zones; drop one block on another to stack it.</p>
           )}

@@ -73,37 +73,50 @@ def quad_problem(points_px: np.ndarray, frame_w: float, frame_h: float, cfg: Mat
     return None
 
 
-def canonical_size(points_px: np.ndarray, long_side: int) -> tuple[int, int]:
-    """Top-down mat image size that keeps the landmark rectangle's measured aspect."""
+def _edge_lengths(points_px: np.ndarray) -> tuple[float, float]:
+    """Mean length of the raw top/bottom edges, then the raw left/right edges."""
     p = np.asarray(points_px, dtype=np.float64)
-    width = (np.linalg.norm(p[1] - p[0]) + np.linalg.norm(p[2] - p[3])) / 2
-    height = (np.linalg.norm(p[3] - p[0]) + np.linalg.norm(p[2] - p[1])) / 2
-    scale = long_side / max(width, height)
-    return max(8, round(width * scale)), max(8, round(height * scale))
+    across = (np.linalg.norm(p[1] - p[0]) + np.linalg.norm(p[2] - p[3])) / 2
+    down = (np.linalg.norm(p[3] - p[0]) + np.linalg.norm(p[2] - p[1])) / 2
+    return float(across), float(down)
+
+
+def canonical_size(points_px: np.ndarray, long_side: int) -> tuple[int, int]:
+    """Landscape size of the portrait mat after a counterclockwise quarter turn.
+
+    The long physical edge (raw top-to-bottom) becomes the canonical width. The short edge is not stretched.
+    """
+    across, down = _edge_lengths(points_px)
+    scale = long_side / max(across, down)
+    # CCW: the raw vertical edges lie along the canonical x axis.
+    width = max(8, round(down * scale))
+    height = max(8, round(across * scale))
+    return width, height
 
 
 def canonical_corners(size: tuple[int, int]) -> np.ndarray:
+    """Where raw TL, TR, BR, BL land after rotating the portrait mat counterclockwise.
+
+    TL → bottom-left, TR → top-left, BR → top-right, BL → bottom-right.
+    """
     w, h = size
-    return np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
+    return np.array([[0, h], [0, 0], [w, 0], [w, h]], dtype=np.float32)
 
 
 def homography_to_canonical(corners_px: np.ndarray, size: tuple[int, int]) -> np.ndarray:
-    """3x3 matrix mapping source-frame pixels (landmarks at the corners) onto the canonical image."""
+    """3x3 matrix mapping source-frame pixels (landmarks at the corners) onto the landscape canonical image."""
     return cv2.getPerspectiveTransform(np.asarray(corners_px, np.float32), canonical_corners(size))
 
 
 def canonical_zones(size: tuple[int, int], band: float, gap: float = 0.02) -> list[Zone]:
-    """Zones A/B/C inside the usable workspace (the band is excluded), split along the mat's long axis."""
-    w, h = size
+    """Zones A/B/C left to right. A is the physical top third of the portrait mat."""
+    del size  # columns are normalized; the image itself is landscape
     inner = 1 - 2 * band
     third = (inner - 2 * gap) / 3
     zones = []
     for i, zid in enumerate("ABC"):
         start = band + i * (third + gap)
-        if h >= w:  # portrait mat: A at the top, C at the bottom
-            zones.append(Zone(zid, f"Zone {zid}", band, start, inner, third))
-        else:
-            zones.append(Zone(zid, f"Zone {zid}", start, band, third, inner))
+        zones.append(Zone(zid, f"Zone {zid}", start, band, third, inner))
     return zones
 
 
@@ -152,9 +165,10 @@ def sharpness(gray: np.ndarray, centers: np.ndarray, radius: int) -> float:
 # -- calibration ----------------------------------------------------------------------------------------
 
 class MatCalibration(CamelModel):
-    """Four clicked landmarks, normalized to the calibrated frame, plus the canonical layout."""
+    """Four clicked landmarks, normalized to the calibrated frame, plus the landscape canonical layout."""
 
-    version: Literal[1] = 1
+    version: Literal[2] = 2
+    orientation: Literal["landscape-ccw"] = "landscape-ccw"
     source: Source
     frame_width: int = Field(gt=0)
     frame_height: int = Field(gt=0)
@@ -176,6 +190,8 @@ class MatCalibration(CamelModel):
                                self.frame_width, self.frame_height, MatConfig())
         if problem:
             raise ValueError(problem)
+        if self.orientation != "landscape-ccw" or self.canonical_width <= self.canonical_height:
+            raise ValueError("Recalibrate mat. Saved calibration is not a landscape view.")
         return self
 
     def points_px(self, width: float, height: float) -> np.ndarray:
@@ -188,6 +204,39 @@ class MatCalibration(CamelModel):
     @property
     def canonical_size(self) -> tuple[int, int]:
         return self.canonical_width, self.canonical_height
+
+
+def prepare_saved_calibration(data: dict) -> dict:
+    """Turn a compatible portrait save into the landscape-ccw layout, or reject it.
+
+    Version 1 stored the unrotated quad, so a taller-than-wide canonical image is the portrait mat.
+    Swapping those dimensions matches the counterclockwise corner map without stretching either edge.
+    A version 1 image that is already wider than tall was not that portrait mat; it is not reused.
+    """
+    if not isinstance(data, dict):
+        raise ValueError("Recalibrate mat. Saved calibration is not usable.")
+    prepared = dict(data)
+    orientation = prepared.get("orientation")
+    width = prepared.get("canonicalWidth", prepared.get("canonical_width"))
+    height = prepared.get("canonicalHeight", prepared.get("canonical_height"))
+    if orientation == "landscape-ccw":
+        if not (isinstance(width, int) and isinstance(height, int) and width > height and not isinstance(width, bool)):
+            raise ValueError("Recalibrate mat. Saved calibration is not a landscape view.")
+        prepared["version"] = 2
+        return prepared
+    if orientation not in (None, ""):
+        raise ValueError("Recalibrate mat. Saved calibration is not a landscape view.")
+    if isinstance(width, bool) or isinstance(height, bool) or not (isinstance(width, int) and isinstance(height, int)):
+        raise ValueError("Recalibrate mat. Saved calibration is not usable.")
+    if height > width:
+        prepared["canonicalWidth"] = height
+        prepared["canonicalHeight"] = width
+        prepared.pop("canonical_width", None)
+        prepared.pop("canonical_height", None)
+        prepared["orientation"] = "landscape-ccw"
+        prepared["version"] = 2
+        return prepared
+    raise ValueError("Recalibrate mat. Saved calibration is not a landscape view.")
 
 
 def build_calibration(source: Source, frame: np.ndarray, points_norm, cfg: MatConfig,
@@ -537,16 +586,24 @@ class MatService:
         if not meta.exists():
             return
         try:
-            cal = MatCalibration.model_validate(json.loads(meta.read_text(encoding="utf-8")))
+            raw = json.loads(meta.read_text(encoding="utf-8"))
+            prepared = prepare_saved_calibration(raw)
+            cal = MatCalibration.model_validate(prepared)
             if cal.source != source:
                 raise ValueError("calibration belongs to another camera")
             ref = cv2.imread(str(image), cv2.IMREAD_GRAYSCALE)
             if ref is None or abs(ref.shape[1] / ref.shape[0] - cal.aspect) > 0.02:
                 raise ValueError("reference image missing or does not match")
+            if prepared.get("canonicalWidth") != raw.get("canonicalWidth") or raw.get("orientation") != "landscape-ccw":
+                self._save(source, cal, ref)
             self.sources[source] = _SourceMat(cal, MatTracker(cal, ref, self.cfg))
         except Exception as exc:
-            self.sources[source] = _SourceMat(problem=f"Saved mat calibration is unreadable ({type(exc).__name__}). "
-                                                      "Recalibrate mat.")
+            text = str(exc)
+            if "Recalibrate mat" in text:
+                problem = text if text.endswith(".") else text + "."
+            else:
+                problem = f"Saved mat calibration is unreadable ({type(exc).__name__}). Recalibrate mat."
+            self.sources[source] = _SourceMat(problem=problem)
 
     def _save(self, source: str, cal: MatCalibration, reference: np.ndarray) -> None:
         if self.directory is None:
