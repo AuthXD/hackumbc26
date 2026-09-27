@@ -1,3 +1,4 @@
+import { HeroCarousel } from "./HeroCarousel";
 import { demoVideoUrl, githubUrl, liveDemoUrl } from "./links";
 
 const workflow = [
@@ -68,23 +69,26 @@ export function App() {
 
       <main id="content">
         <section className="hero">
-          <p className="eyebrow">Teach once. Coach every time.</p>
-          <h1>Teach any visible procedure by demonstrating it once.</h1>
-          <p className="lede">
-            TeachBack watches an object-based task, learns its ordered steps, and coaches the next person through it.
-            Computer vision verifies each action, Gemini explains the procedure, and Tiger Data preserves it for future training.
-          </p>
-          {(demoVideoUrl || liveDemoUrl) && (
-            <div className="actions">
-              {demoVideoUrl && (
-                <a className="btn primary" href={demoVideoUrl}>Watch Demo</a>
-              )}
-              {liveDemoUrl && (
-                <a className="btn" href={liveDemoUrl}>Open Live Demo</a>
-              )}
-            </div>
-          )}
-          <p className="caption">Local-first computer vision · deterministic verification · reusable training</p>
+          <div className="hero-copy">
+            <p className="eyebrow">Teach once. Coach every time.</p>
+            <h1>Teach any visible procedure by demonstrating it once.</h1>
+            <p className="lede">
+              TeachBack watches an object-based task, learns its ordered steps, and coaches the next person through it.
+              Computer vision verifies each action, Gemini explains the procedure, and Tiger Data preserves it for future training.
+            </p>
+            {(demoVideoUrl || liveDemoUrl) && (
+              <div className="actions">
+                {demoVideoUrl && (
+                  <a className="btn primary" href={demoVideoUrl}>Watch Demo</a>
+                )}
+                {liveDemoUrl && (
+                  <a className="btn" href={liveDemoUrl}>Open Live Demo</a>
+                )}
+              </div>
+            )}
+            <p className="caption">Local-first computer vision · deterministic verification · reusable training</p>
+          </div>
+          <HeroCarousel />
         </section>
 
         <section id="workflow" aria-labelledby="workflow-title">
