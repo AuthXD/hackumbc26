@@ -41,8 +41,15 @@ def semantic_scene(detections: list[dict], labels: tuple[str, ...], cfg: VisionC
     by_label = {}
     for detection in detections:
         key = " ".join(detection["label"].split()).casefold()
-        if key not in vocabulary or key in by_label:
-            raise AmbiguousScan("Duplicate or unexpected object. Use unique descriptions and separate the objects.")
+        if key not in vocabulary:
+            raise AmbiguousScan(
+                f'The detector returned an unexpected label: "{detection["label"]}". Rescan the table.'
+            )
+        if key in by_label:
+            raise AmbiguousScan(
+                f'The detector matched more than one object as "{vocabulary[key]}". '
+                "Use descriptions that distinguish one physical object each."
+            )
         box = detection["bbox"]
         if len(box) != 4 or not all(isinstance(v, (int, float)) and math.isfinite(v) for v in box):
             raise AmbiguousScan("Invalid object box. Rescan the table.")

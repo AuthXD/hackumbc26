@@ -86,7 +86,7 @@ function setupView(u: ServerUpdate): View {
   }
   if (d && (d.scanState === "error" || d.scanState === "ambiguous")) {
     return { tone: d.scanState === "error" ? "error" : "warning", eyebrow, headline: "No verdict — scan failed",
-      expected, observed: d.message, fix: "Separate the objects, keep the table still, and try again." };
+      expected, observed: d.message, fix: "Follow the detector message, keep the table still, and try again." };
   }
   return {
     tone: "neutral",
@@ -118,7 +118,7 @@ function procedureView(u: ServerUpdate | null): View {
       headline: loading ? WORKER_LABEL[d.workerState]
         : broken ? WORKER_LABEL.error
         : d.scanState === "scanning" ? "Scanning objects…"
-        : d.scanState === "ambiguous" ? "Separate the objects and rescan"
+        : d.scanState === "ambiguous" ? "Object scan is ambiguous"
         : d.scanState === "error" ? "Object detector unavailable" : "Scan the settled table",
       expected: "Keep all requested objects separated and fully visible. Scan after each move.",
       observed: broken ? (d.workerMessage || d.message) : d.message,

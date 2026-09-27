@@ -53,6 +53,13 @@ def test_missing_duplicate_unexpected_overlapping_or_invalid_are_ambiguous(boxes
         scene(boxes)
 
 
+def test_duplicate_and_unexpected_detections_explain_the_actual_problem():
+    with pytest.raises(AmbiguousScan, match='more than one object as "blue bottle"'):
+        scene(BOXES + [BOXES[0]])
+    with pytest.raises(AmbiguousScan, match='unexpected label: "unknown"'):
+        scene([BOXES[0], {"label": "unknown", "bbox": [.7, .3, .9, .5]}])
+
+
 def test_mixed_identity_models_rejected():
     obj = scene().objects[0].model_dump()
     with pytest.raises(ValidationError):
