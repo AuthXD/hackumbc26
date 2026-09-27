@@ -17,7 +17,13 @@ from .models import SceneObject, SceneState
 from .vision import analyze_frame, assign_zones
 
 DEFAULT_LABELS = ("blue water bottle", "brown wallet", "green smartwatch", "blue smartphone")
-DEMO_LABELS = frozenset(("red box", "brown wallet", "green smartwatch"))
+DEMO_LABEL_ROLES = {
+    "red box": "red box",
+    "brown wallet": "brown wallet",
+    "green smartwatch": "green watch",
+    "green watch": "green watch",
+}
+DEMO_ROLES = frozenset(("red box", "brown wallet", "green watch"))
 
 
 class AmbiguousScan(ValueError):
@@ -51,6 +57,14 @@ def _mask_box(mask: np.ndarray, min_area: float, combine: bool = False) -> tuple
     return x / width, y / height, (x + w) / width, (y + h) / height
 
 
+def _demo_label_roles(labels: tuple[str, ...]) -> tuple[str, ...] | None:
+    """Map accepted live-demo aliases to physical roles without changing the user's labels."""
+    roles = tuple(DEMO_LABEL_ROLES.get(label.casefold(), "") for label in labels)
+    if len(roles) != 3 or not all(roles) or frozenset(roles) != DEMO_ROLES:
+        return None
+    return roles
+
+
 def demo_object_scene(frame: np.ndarray, labels: tuple[str, ...], cfg: VisionConfig, now: float) -> SceneState:
     """Deterministic fallback for the three physical objects used in the live HackUMBC demo."""
     height, width = frame.shape[:2]
@@ -72,18 +86,21 @@ def demo_object_scene(frame: np.ndarray, labels: tuple[str, ...], cfg: VisionCon
     wallet = cv2.morphologyEx(wallet, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
     wallet = cv2.morphologyEx(wallet, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
 
-    boxes = {
+    role_boxes = {
         "red box": _mask_box(red, area * .008),
-        "green smartwatch": _mask_box(green, area * .0015, combine=True),
+        "green watch": _mask_box(green, area * .0015, combine=True),
         "brown wallet": _mask_box(wallet, area * .008),
     }
-    missing = [label for label in labels if boxes.get(label.casefold()) is None]
+    roles = _demo_label_roles(labels)
+    if roles is None:
+        raise AmbiguousScan("The live-demo fallback only supports the red box, brown wallet, and green watch.")
+    missing = [label for label, role in zip(labels, roles) if role_boxes.get(role) is None]
     if missing:
         raise AmbiguousScan("Demo fallback could not isolate: " + ", ".join(missing) + ". Keep each object on the black mat.")
 
     objects = []
-    for label in labels:
-        x1, y1, x2, y2 = boxes[label.casefold()]  # every requested label was checked above
+    for label, role in zip(labels, roles):
+        x1, y1, x2, y2 = role_boxes[role]  # every requested physical role was checked above
         objects.append(SceneObject(kind="semantic", id=label, label=label, color=None, confidence=None,
                                    bbox=(x1, y1, x2 - x1, y2 - y1), center=((x1 + x2) / 2, (y1 + y2) / 2), zone=None))
     assign_zones(objects, cfg)
@@ -187,7 +204,7 @@ class LocateAnythingDetector:
             try:
                 return semantic_scene(detections, labels, self.cfg.vision, now, allow_missing)
             except AmbiguousScan:
-                if not allow_missing and frozenset(label.casefold() for label in labels) == DEMO_LABELS:
+                if not allow_missing and _demo_label_roles(labels) is not None:
                     return demo_object_scene(frame, labels, self.cfg.vision, now)
                 raise
         finally:

@@ -68,17 +68,45 @@ def test_overlapping_same_label_boxes_are_one_physical_object():
     assert result.objects[0].bbox == pytest.approx((.055, .205, .2, .2))
 
 
-def test_demo_fallback_tracks_the_three_live_objects_and_assigns_zones():
+@pytest.mark.parametrize("watch_label", ["green smartwatch", "green watch"])
+def test_demo_fallback_tracks_the_three_live_objects_and_assigns_zones(watch_label):
     image = np.full((300, 900, 3), (65, 70, 68), np.uint8)
     cv2.ellipse(image, (175, 150), (65, 45), 0, 25, 335, (40, 115, 45), 13)
     cv2.rectangle(image, (155, 98), (195, 135), (18, 25, 20), -1)
     cv2.rectangle(image, (370, 85), (535, 235), (25, 35, 220), -1)
     cv2.rectangle(image, (680, 85), (815, 235), (125, 135, 145), -1)
-    labels = ("red box", "brown wallet", "green smartwatch")
+    labels = ("red box", "brown wallet", watch_label)
     result = demo_object_scene(image, labels, Settings().vision, 4)
     assert [obj.id for obj in result.objects] == list(labels)
     assert {obj.id: obj.zone for obj in result.objects} == {
-        "green smartwatch": "A", "red box": "B", "brown wallet": "C",
+        watch_label: "A", "red box": "B", "brown wallet": "C",
+    }
+
+
+def test_detector_uses_demo_fallback_for_green_watch_alias(tmp_path, monkeypatch):
+    class Fake:
+        state = "ready"
+        public_message = ""
+
+        def predict(self, path, labels):
+            return [{"label": "green watch", "bbox": [.05, .2, .25, .4]}]
+
+        def close(self):
+            pass
+
+    image = np.full((300, 900, 3), (65, 70, 68), np.uint8)
+    cv2.rectangle(image, (370, 85), (535, 235), (25, 35, 220), -1)
+    cv2.rectangle(image, (680, 85), (815, 235), (125, 135, 145), -1)
+    cv2.ellipse(image, (175, 150), (65, 45), 0, 25, 335, (40, 115, 45), 13)
+    cv2.rectangle(image, (155, 98), (195, 135), (18, 25, 20), -1)
+    labels = ("brown wallet", "red box", "green watch")
+    monkeypatch.setattr("app.detectors.DATA_DIR", tmp_path)
+
+    result = LocateAnythingDetector(Settings(), worker=Fake()).detect(image, 4, labels)
+
+    assert [obj.id for obj in result.objects] == list(labels)
+    assert {obj.id: obj.zone for obj in result.objects} == {
+        "green watch": "A", "red box": "B", "brown wallet": "C",
     }
 
 
