@@ -90,6 +90,43 @@ class StabilityConfig:
 
 
 @dataclass
+class MatConfig:
+    """Mat calibration + tracking. Pixel values refer to the working image (long side = work_long_side)."""
+
+    canonical_long_side: int = 960  # top-down mat image size (long side, px)
+    band_fraction: float = 0.10  # outer band holding the corner stickers; never part of the workspace
+    work_long_side: int = 960  # tracking resolution
+    patch_radius_frac: float = 0.06  # landmark patch radius, fraction of the working image's short side
+    points_per_corner: int = 30
+    min_corner_features: int = 6  # a landmark needs this much texture to be calibrated
+    min_feature_strength: float = 0.002  # min eigenvalue; real stickers measured 0.025-0.064, blank mat 0
+    orb_features: int = 2000
+    # calibration geometry
+    min_quad_area_frac: float = 0.04
+    min_edge_frac: float = 0.05
+    min_angle_deg: float = 35.0
+    max_angle_deg: float = 145.0
+    max_opposite_ratio: float = 3.0
+    # tracking validation (fail closed)
+    min_inliers: int = 12
+    min_corner_inliers: int = 3  # a landmark counts as visible with this many inlier points
+    min_corner_ncc: float = 0.5  # ...and when its patch still looks like the calibration patch
+    max_missing_corner_s: float = 1.0  # one covered landmark is tolerated this long
+    max_reproj_px: float = 2.5
+    max_fb_error: float = 1.5  # Lucas-Kanade forward-backward consistency, px
+    corner_margin_frac: float = 0.0  # tracked corners must stay inside the frame
+    max_jump_frac: float = 0.06  # corner jump between frames (fraction of the diagonal) = abrupt motion
+    max_area_change: float = 0.2
+    steady_px: float = 2.0  # corner motion per frame below this counts as "held still"
+    steady_frames: int = 3  # consecutive steady frames before verdicts are allowed
+    blur_ratio: float = 0.35  # landmark sharpness vs calibration below this = motion blur
+    stale_s: float = 1.0  # a transform older than this is never reused
+    smooth_px: float = 0.8  # jitter below this is smoothed; larger movement snaps immediately
+    smooth_alpha: float = 0.5
+    scan_max_shift_frac: float = 0.01  # camera shift during a scan (fraction of diagonal) that voids it
+
+
+@dataclass
 class ProcedureConfig:
     steps_per_procedure: int = 4
     min_objects: int = 2  # objects that must be visible to capture a starting layout
@@ -100,6 +137,9 @@ class Settings:
     vision: VisionConfig = field(default_factory=VisionConfig)
     stability: StabilityConfig = field(default_factory=StabilityConfig)
     procedure: ProcedureConfig = field(default_factory=ProcedureConfig)
+    mat: MatConfig = field(default_factory=MatConfig)
+    # Max image dimension sent to LocateAnything (see benchmarks/locate_anything/results/canonical-size).
+    semantic_max_dim: int = 640
     semantic_beta: bool = field(default_factory=lambda: os.getenv("TEACHBACK_SEMANTIC_BETA") == "1")
     locate_distro: str = field(default_factory=lambda: os.getenv("LOCATE_WSL_DISTRO", "Ubuntu"))
     locate_model: str = field(default_factory=lambda: os.getenv("LOCATE_MODEL", "/home/authxd/models/locate-anything-q6_k.gguf"))
