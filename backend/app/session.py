@@ -75,6 +75,7 @@ class Session:
         self.semantic_labels = DEFAULT_LABELS
         self.scan_status = "idle"
         self.scan_message = "Hold the table still, then press Scan Objects."
+        self.on_detector_change = None  # main.py broadcasts when the worker leaves loading
         self.last_full_frame = None
         self.last_jpeg: bytes | None = None
         self.last_capture = 0.0
@@ -120,6 +121,8 @@ class Session:
         if frame is None:
             return {"type": "update", "error": "Could not decode frame"}
         with self.lock:
+            if self.detector_kind == "semantic":
+                self._kick_semantic_preload()
             image, view_jpeg, untrusted = self._stabilize(frame, jpeg, source, now)
             if image is None:  # mat tracking lost: no scene, no verdicts, no commits
                 snap = self.snapshot([])
@@ -218,6 +221,7 @@ class Session:
                     if self.procedure and self.procedure.detector_kind == "semantic" and set(requested) != set(self.procedure.tracked_ids):
                         raise ValueError("Reset the saved semantic procedure before changing its objects.")
                     self.semantic_labels = requested
+                    self._kick_semantic_preload()
                 self.detector_kind = kind
                 self._invalidate_scan()
                 self.tracker.reset()
@@ -229,9 +233,26 @@ class Session:
                 self.notice = str(exc)
             return self.snapshot()
 
+    def _worker_state(self) -> str:
+        return getattr(getattr(self.semantic_detector, "worker", None), "state", "unloaded")
+
+    def _kick_semantic_preload(self) -> None:
+        start = getattr(getattr(self.semantic_detector, "worker", None), "start_preload", None)
+        if callable(start):
+            start(on_done=self._notify_detector)
+
+    def _notify_detector(self) -> None:
+        cb = self.on_detector_change
+        if cb is not None:
+            cb()
+
     def _cmd_scan(self) -> list[Event]:
         if self.detector_kind != "semantic":
             self.notice = "Select Semantic Objects beta before scanning."
+        elif self._worker_state() != "ready":
+            self._kick_semantic_preload()
+            self.notice = ("Loading model. Scan when it says Model ready." if self._worker_state() == "loading"
+                           else "Model error. Retry loading, or use Color mode.")
         elif self.last_full_frame is None or not self._can_scan():
             self.notice = "Hold the table still before scanning."
         else:
@@ -261,7 +282,8 @@ class Session:
         return {"kind": self.detector_kind, "betaEnabled": self.cfg.semantic_beta,
                 "labels": list(self.semantic_labels), "workerState": self.semantic_detector.worker.state,
                 "scanState": self.scan_status, "message": self.scan_message,
-                "canScan": self.detector_kind == "semantic" and self._can_scan(),
+                "canScan": self.detector_kind == "semantic" and self._can_scan() and self._worker_state() == "ready",
+                "workerMessage": getattr(getattr(self.semantic_detector, "worker", None), "public_message", "") or "",
                 "switchLocked": self.mode != "idle",
                 "procedureKind": self.procedure.detector_kind if self.procedure else None}
 

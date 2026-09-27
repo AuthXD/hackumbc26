@@ -36,6 +36,7 @@ export type DetectorState = {
   betaEnabled: boolean;
   labels: string[];
   workerState: "unloaded" | "loading" | "ready" | "error";
+  workerMessage?: string;
   scanState: "idle" | "scanning" | "valid" | "ambiguous" | "error";
   message: string;
   canScan: boolean;

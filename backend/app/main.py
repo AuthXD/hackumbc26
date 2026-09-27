@@ -32,10 +32,16 @@ async def lifespan(app: FastAPI):
         loop.call_soon_threadsafe(lambda: asyncio.create_task(hub.broadcast(session.snapshot())))
 
     session.history_writer.on_change = history_changed
+
+    def detector_changed() -> None:
+        loop.call_soon_threadsafe(lambda: asyncio.create_task(hub.broadcast(session.snapshot())))
+
+    session.on_detector_change = detector_changed
     watchdog = asyncio.create_task(hub.watch_sources())
     yield
     watchdog.cancel()
     session.history_writer.on_change = None
+    session.on_detector_change = None
     await asyncio.to_thread(session.close)  # drains accepted history events within a bounded timeout
 
 

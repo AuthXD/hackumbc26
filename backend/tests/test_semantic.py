@@ -3,14 +3,16 @@ import json
 from pathlib import Path
 import sys
 import threading
+import time
 from types import SimpleNamespace
 
+import cv2
 import numpy as np
 import pytest
 from pydantic import ValidationError
 
 from app.config import Settings
-from app.detectors import AmbiguousScan, ColorDetector, LatestScan, parse_labels, semantic_scene
+from app.detectors import AmbiguousScan, ColorDetector, LatestScan, LocateAnythingDetector, parse_labels, prepare_semantic_frame, semantic_scene
 from app.engine import TeachRecorder
 from app.locate_worker import LocateWorker
 from app.models import SceneObject, SceneState
@@ -242,6 +244,54 @@ def test_saved_semantic_identity_round_trips(semantic_session, tmp_path, monkeyp
         restored.close()
 
 
+# A resident fake: announces starting, then ready, then answers probe / detect on stdin.
+FAKE_WORKER = r"""
+import json, sys
+print(json.dumps({"type": "starting", "pid": 1}), flush=True)
+print(json.dumps({"type": "ready"}), flush=True)
+for line in sys.stdin:
+    req = json.loads(line)
+    if req.get("type") == "probe":
+        print(json.dumps({"type": "probed", "ok": True}), flush=True)
+    elif req.get("type") == "shutdown":
+        break
+    else:
+        print(json.dumps({"type": "result", "id": req.get("id"), "status": "ok", "detections": []}), flush=True)
+"""
+
+SLOW_FAKE_WORKER = r"""
+import json, sys, time
+print(json.dumps({"type": "starting", "pid": 1}), flush=True)
+time.sleep(float(sys.argv[1]))
+print(json.dumps({"type": "ready"}), flush=True)
+for line in sys.stdin:
+    req = json.loads(line)
+    if req.get("type") == "probe":
+        print(json.dumps({"type": "probed", "ok": True}), flush=True)
+    elif req.get("type") == "shutdown":
+        break
+"""
+
+COUNTING_WORKER = r"""
+import json, sys
+from pathlib import Path
+n = Path(sys.argv[1])
+n.write_text(str(int(n.read_text() or 0) + 1))
+print(json.dumps({"type": "starting", "pid": 1}), flush=True)
+print(json.dumps({"type": "ready"}), flush=True)
+for line in sys.stdin:
+    req = json.loads(line)
+    if req.get("type") == "probe":
+        print(json.dumps({"type": "probed", "ok": True}), flush=True)
+    elif req.get("type") == "shutdown":
+        break
+"""
+
+
+def _cmd(*parts):
+    return [sys.executable, "-u", "-c", *parts]
+
+
 @pytest.mark.parametrize("stage", ["startup", "request"])
 def test_worker_deadlines_terminate_process(stage, tmp_path):
     program = "import time; time.sleep(30)"
@@ -250,9 +300,10 @@ def test_worker_deadlines_terminate_process(stage, tmp_path):
     cfg = Settings(locate_startup_timeout=.1 if stage == "startup" else 2, locate_request_timeout=.1)
     worker = LocateWorker(cfg, command=[sys.executable, "-u", "-c", program])
     try:
-        with pytest.raises(TimeoutError):
+        with pytest.raises(RuntimeError, match="unavailable|timed out"):
             worker.predict(tmp_path / "unused.png", LABELS)
         assert worker.state == "error" and worker.process is None
+        assert "Traceback" not in worker.public_message
     finally:
         worker.close()
 
@@ -261,8 +312,118 @@ def test_worker_crash_and_model_loading_are_lazy(tmp_path):
     worker = LocateWorker(Settings(), command=[sys.executable, "-c", "raise SystemExit(7)"])
     try:
         assert worker.process is None and worker.state == "unloaded"
-        with pytest.raises(RuntimeError, match="worker stopped"):
+        with pytest.raises(RuntimeError, match="unavailable"):
             worker.predict(tmp_path / "unused.png", LABELS)
         assert worker.state == "error" and worker.process is None
+        assert "SystemExit" not in worker.public_message
     finally:
         worker.close()
+
+
+def test_unloaded_loading_ready_and_probe_is_required(tmp_path):
+    worker = LocateWorker(Settings(locate_startup_timeout=5), command=_cmd(SLOW_FAKE_WORKER, "0.6"))
+    try:
+        assert worker.state == "unloaded"
+        worker.start_preload()
+        assert worker.state == "loading"
+        time.sleep(0.15)
+        assert worker.state == "loading"  # starting is not ready
+        worker.preload()
+        assert worker.state == "ready"
+    finally:
+        worker.close()
+
+
+def test_loading_failure_then_retry(tmp_path):
+    worker = LocateWorker(Settings(), command=[sys.executable, "-c", "raise SystemExit(7)"])
+    try:
+        with pytest.raises(RuntimeError):
+            worker.preload()
+        assert worker.state == "error"
+        worker.command = _cmd(FAKE_WORKER)
+        worker.start_preload()
+        worker.preload()
+        assert worker.state == "ready"
+    finally:
+        worker.close()
+
+
+def test_concurrent_preload_starts_one_worker(tmp_path):
+    count = tmp_path / "n"
+    count.write_text("0")
+    worker = LocateWorker(Settings(locate_startup_timeout=5),
+                          command=[sys.executable, "-u", "-c", COUNTING_WORKER, str(count)])
+    try:
+        threads = [threading.Thread(target=worker.preload) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(5)
+        assert worker.state == "ready"
+        assert count.read_text() == "1"
+    finally:
+        worker.close()
+
+
+def test_selecting_semantic_preloads_without_blocking_the_session():
+    import time as _time
+    worker = LocateWorker(Settings(locate_startup_timeout=5), command=_cmd(SLOW_FAKE_WORKER, "0.7"))
+    s = Session(Settings(semantic_beta=True), persist=False)
+    s.semantic_detector.worker.close()
+    s.semantic_detector.worker = worker
+    try:
+        t0 = _time.monotonic()
+        snap = s.configure_detector("semantic", ",".join(LABELS))
+        assert _time.monotonic() - t0 < 0.45
+        assert snap["detector"]["kind"] == "semantic"
+        assert snap["detector"]["workerState"] == "loading"
+        assert snap["detector"]["canScan"] is False
+        worker.preload()
+        snap = s.snapshot()
+        assert snap["detector"]["workerState"] == "ready"
+    finally:
+        s.close()
+
+
+def test_prepare_semantic_frame_uses_configured_max_dim():
+    tall = np.zeros((960, 400, 3), np.uint8)
+    out = prepare_semantic_frame(tall, 448)
+    assert max(out.shape[:2]) == 448
+    assert prepare_semantic_frame(np.zeros((100, 80, 3), np.uint8), 640).shape[:2] == (100, 80)
+
+
+def test_detector_sends_resized_frame_to_the_worker(tmp_path, monkeypatch):
+    seen = []
+
+    class Fake:
+        state = "ready"
+        public_message = ""
+
+        def predict(self, path, labels):
+            image = cv2.imread(str(path))
+            seen.append(image.shape[:2])
+            return list(BOXES)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("app.detectors.DATA_DIR", tmp_path)
+    det = LocateAnythingDetector(Settings(semantic_max_dim=448), worker=Fake())
+    det.detect(np.zeros((960, 400, 3), np.uint8), 1.0, LABELS)
+    assert seen and max(seen[0]) == 448
+
+
+def test_scan_while_loading_does_not_claim_scanning():
+    worker = LocateWorker(Settings(locate_startup_timeout=5), command=_cmd(SLOW_FAKE_WORKER, "2"))
+    s = Session(Settings(semantic_beta=True), persist=False)
+    s.semantic_detector.worker.close()
+    s.semantic_detector.worker = worker
+    try:
+        s.configure_detector("semantic", ",".join(LABELS))
+        hold(s)
+        snap = s.command("scan")
+        assert snap["detector"]["scanState"] != "scanning"
+        assert snap["detector"]["workerState"] == "loading"
+        assert "Loading" in snap["notice"]
+    finally:
+        s.close()

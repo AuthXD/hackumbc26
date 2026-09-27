@@ -1,5 +1,12 @@
 import type { MatDisplay } from "./MatView";
-import type { ServerUpdate } from "./types";
+import type { DetectorState, ServerUpdate } from "./types";
+
+export const WORKER_LABEL: Record<DetectorState["workerState"], string> = {
+  unloaded: "Model not loaded",
+  loading: "Loading model",
+  ready: "Model ready",
+  error: "Model error",
+};
 
 export type Tone = "neutral" | "success" | "warning" | "error";
 
@@ -101,18 +108,22 @@ function procedureView(u: ServerUpdate | null): View {
   }
   const tracker = u.tracker;
   if (u.workspace === "setup" && u.setup) return setupView(u);
-  if (u.detector?.kind === "semantic" && u.detector.scanState !== "valid") {
+  if (u.detector?.kind === "semantic" && (u.detector.scanState !== "valid" || u.detector.workerState !== "ready")) {
     const d = u.detector;
+    const loading = d.workerState === "loading" || d.workerState === "unloaded";
+    const broken = d.workerState === "error";
     return {
-      tone: d.scanState === "error" ? "error" : "warning",
+      tone: broken || d.scanState === "error" ? "error" : "warning",
       eyebrow: "Semantic Objects · Beta · Waiting",
-      headline: d.workerState === "loading" ? "Loading object detector…"
+      headline: loading ? WORKER_LABEL[d.workerState]
+        : broken ? WORKER_LABEL.error
         : d.scanState === "scanning" ? "Scanning objects…"
         : d.scanState === "ambiguous" ? "Separate the objects and rescan"
         : d.scanState === "error" ? "Object detector unavailable" : "Scan the settled table",
       expected: "Keep all requested objects separated and fully visible. Scan after each move.",
-      observed: d.message,
-      fix: d.scanState === "error" ? "Retry Scan Objects, or pause the procedure and explicitly switch to Color mode." : undefined,
+      observed: broken ? (d.workerMessage || d.message) : d.message,
+      fix: broken ? "Retry loading the model, or select Color to keep using the color detector."
+        : d.scanState === "error" ? "Retry Scan Objects, or pause the procedure and explicitly switch to Color mode." : undefined,
     };
   }
   if (u.procedure && u.detector && u.procedure.detectorKind !== u.detector.kind) {

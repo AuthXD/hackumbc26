@@ -132,14 +132,33 @@ class ProcedureConfig:
     min_objects: int = 2  # objects that must be visible to capture a starting layout
 
 
+SEMANTIC_MAX_DIM_RANGE = (224, 1280)  # below: objects vanish; above: slower than the 960 px canonical mat
+
+
+def _semantic_max_dim() -> int | str:
+    return os.getenv("TEACHBACK_SEMANTIC_MAX_DIM", "").strip() or 640
+
+
+def validate_semantic_max_dim(value: object) -> int:
+    """The longest image edge sent to LocateAnything. Rejects anything that is not a whole number of pixels
+    in SEMANTIC_MAX_DIM_RANGE instead of silently clamping it."""
+    low, high = SEMANTIC_MAX_DIM_RANGE
+    text = str(value).strip()
+    if isinstance(value, bool) or not (text.isascii() and text.isdigit()) or not low <= int(text) <= high:
+        raise ValueError(f"TEACHBACK_SEMANTIC_MAX_DIM must be a whole number of pixels from {low} to {high}; "
+                         f"got {text[:20]!r}.")
+    return int(text)
+
+
 @dataclass
 class Settings:
     vision: VisionConfig = field(default_factory=VisionConfig)
     stability: StabilityConfig = field(default_factory=StabilityConfig)
     procedure: ProcedureConfig = field(default_factory=ProcedureConfig)
     mat: MatConfig = field(default_factory=MatConfig)
-    # Max image dimension sent to LocateAnything (see benchmarks/locate_anything/results/canonical-size).
-    semantic_max_dim: int = 640
+    # Longest edge of the image sent to LocateAnything (the canonical mat when tracking). Measured in
+    # benchmarks/locate_anything/evidence/size-sweep.md.
+    semantic_max_dim: int = field(default_factory=_semantic_max_dim)
     semantic_beta: bool = field(default_factory=lambda: os.getenv("TEACHBACK_SEMANTIC_BETA") == "1")
     locate_distro: str = field(default_factory=lambda: os.getenv("LOCATE_WSL_DISTRO", "Ubuntu"))
     locate_model: str = field(default_factory=lambda: os.getenv("LOCATE_MODEL", "/home/authxd/models/locate-anything-q6_k.gguf"))
@@ -161,6 +180,9 @@ class Settings:
     history_close_timeout: float = 5.0  # seconds to drain accepted events at shutdown
     # Trusted HTTPS tunnel used by the phone-camera QR. LAN HTTP is still shown as a view-only fallback.
     phone_public_url: str = field(default_factory=lambda: os.getenv("TEACHBACK_PHONE_URL", "").strip())
+
+    def __post_init__(self) -> None:
+        self.semantic_max_dim = validate_semantic_max_dim(self.semantic_max_dim)
 
 
 settings = Settings()

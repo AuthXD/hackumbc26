@@ -12,6 +12,9 @@ import time
 
 from .config import DATA_DIR, REPO_ROOT, Settings
 
+UNAVAILABLE = "The object detector is unavailable. Try again, or use Color mode."
+TIMED_OUT = "The object detector timed out. Try again, or use Color mode."
+
 
 def linux_path(path: Path) -> str:
     path = path.resolve()
@@ -20,11 +23,17 @@ def linux_path(path: Path) -> str:
     return str(path)
 
 
+def public_error(exc: BaseException) -> str:
+    """UI / snapshot text: no stack traces, paths, or configuration values."""
+    return TIMED_OUT if isinstance(exc, TimeoutError) else UNAVAILABLE
+
+
 class LocateWorker:
     def __init__(self, cfg: Settings, command: list[str] | None = None) -> None:
         self.cfg = cfg
         self.command = command
         self.state = "unloaded"
+        self.public_message = ""
         self.process = None
         self.pid = None
         self.log = None
@@ -33,6 +42,9 @@ class LocateWorker:
         self.lifecycle = threading.RLock()
         self.closed = False
         self.sequence = 0
+        self._load_thread: threading.Thread | None = None
+        self._on_done = None
+        self.messages: queue.Queue = queue.Queue()
 
     def _command(self) -> list[str]:
         if self.command is not None:
@@ -73,11 +85,46 @@ class LocateWorker:
         if self.command is None and "using device: CUDA0" not in text:
             raise RuntimeError("LocateAnything CUDA device is not ready")
 
+    def start_preload(self, on_done=None) -> None:
+        """Begin loading in the background. Repeated calls share the in-flight start."""
+        with self.lifecycle:
+            if on_done is not None:
+                self._on_done = on_done
+            if self.closed or (self.state == "ready" and self.process is not None):
+                return
+            if self._load_thread is not None and self._load_thread.is_alive():
+                return
+            self.state = "loading"
+            self.public_message = "Loading model."
+            self._load_thread = threading.Thread(target=self._load_safe, daemon=True, name="locate-preload")
+            self._load_thread.start()
+
+    def _load_safe(self) -> None:
+        try:
+            self._start()
+        except Exception as exc:
+            self.state = "error"
+            self.public_message = public_error(exc)
+            self._terminate()
+        finally:
+            cb = self._on_done
+            if cb is not None:
+                cb()
+
+    def preload(self) -> None:
+        """Block until the readiness probe succeeds or the worker fails."""
+        self.start_preload()
+        thread = self._load_thread
+        if thread is not None:
+            thread.join(self.cfg.locate_startup_timeout + 5)
+        if self.state != "ready":
+            raise RuntimeError(self.public_message or UNAVAILABLE)
+
     def _start(self):
         with self.lifecycle:
             if self.closed:
                 raise RuntimeError("LocateAnything worker is closed")
-            if self.process is not None:
+            if self.state == "ready" and self.process is not None:
                 return
             self.state = "loading"
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -94,14 +141,24 @@ class LocateWorker:
         if reply.get("type") != "ready":
             raise RuntimeError("LocateAnything did not become ready")
         self._diagnostics()
+        process = self.process
+        if process is None or process.stdin is None:
+            raise RuntimeError("LocateAnything worker stopped")
+        process.stdin.write(json.dumps({"type": "probe"}) + "\n")
+        process.stdin.flush()
+        probed = self._receive(min(10.0, max(0.05, self.cfg.locate_request_timeout)))
+        if probed.get("type") != "probed" or not probed.get("ok"):
+            raise RuntimeError("LocateAnything did not become ready")
+        self._diagnostics()
         self.state = "ready"
+        self.public_message = ""
 
     def predict(self, image: Path, labels: tuple[str, ...]) -> list[dict]:
+        self.preload()
         try:
-            self._start()
             self.sequence += 1
             process = self.process
-            if process is None:
+            if process is None or process.stdin is None:
                 raise RuntimeError("LocateAnything worker stopped")
             process.stdin.write(json.dumps({"id": self.sequence, "image": linux_path(image), "labels": labels}) + "\n")
             process.stdin.flush()
@@ -110,10 +167,11 @@ class LocateWorker:
                 raise RuntimeError(reply.get("error", "Invalid LocateAnything response"))
             self._diagnostics()
             return reply["detections"]
-        except Exception:
+        except Exception as exc:
             self.state = "error"
+            self.public_message = public_error(exc)
             self._terminate()
-            raise
+            raise RuntimeError(self.public_message) from None
 
     def _terminate(self):
         with self.lifecycle:

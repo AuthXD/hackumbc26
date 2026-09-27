@@ -8,7 +8,7 @@ import { PhoneCamera, PhoneLinkButton } from "./PhoneLink";
 import { SetupPanel } from "./SetupPanel";
 import { Simulator, type SimulatorHandle } from "./Simulator";
 import { speaker } from "./speech";
-import { StatusCard, statusView } from "./StatusCard";
+import { StatusCard, statusView, WORKER_LABEL } from "./StatusCard";
 import { Timeline } from "./Timeline";
 import type { ServerUpdate, TrackerStatus } from "./types";
 import { useCamera } from "./useCamera";
@@ -287,7 +287,7 @@ export default function App() {
                 Semantic Objects <span className="beta-badge">Beta</span>
               </button>
             </div>
-            {semantic && <span className="pill">Model: {detector?.workerState}</span>}
+            {semantic && <span className="pill">{WORKER_LABEL[detector?.workerState ?? "unloaded"]}</span>}
             {semantic && mode !== "idle" && <button className="ghost" onClick={() => command("pause")}>Pause procedure</button>}
           </div>
           {semantic && <>
@@ -299,12 +299,18 @@ export default function App() {
             <div className="semantic-toolbar">
               <button className="ghost" disabled={mode !== "idle" || u?.procedure?.detectorKind === "semantic"}
                 onClick={() => send({ type: "detector", kind: "semantic", labels: objectDescriptions })}>Apply objects</button>
-              <button className="btn" disabled={!detector?.canScan || source !== "camera"}
+              <button className="btn" disabled={!detector?.canScan || source !== "camera" || detector.workerState !== "ready"}
                 onClick={() => command("scan")}>{detector?.scanState === "scanning" ? "Replace pending scan" : "Scan Objects"}</button>
+              {detector?.workerState === "error" && <button className="btn" disabled={detector.switchLocked}
+                onClick={() => send({ type: "detector", kind: "semantic", labels: objectDescriptions })}>Retry model</button>}
               <span className="hint">2–6 unique descriptions. Choose large, distinct objects. Keep objects separated and fully visible.</span>
             </div>
             <p className="hint">Manual scans only. Hold still and scan the starting layout and each move. Stacking is unsupported.</p>
-            {detector?.scanState === "error" && <p className="semantic-error" role="alert">
+            {detector?.workerState === "loading" && <p className="hint">Loading model. Scanning is disabled until it is ready.</p>}
+            {detector?.workerState === "error" && <p className="semantic-error" role="alert">
+              {detector.workerMessage || detector.message} Color mode still works. Your procedure is preserved.
+            </p>}
+            {detector?.scanState === "error" && detector.workerState !== "error" && <p className="semantic-error" role="alert">
               {detector.message} Your procedure is preserved. {mode !== "idle" ? "Pause it, then select Color above." : "Select Color above to use the fallback."}
             </p>}
           </>}

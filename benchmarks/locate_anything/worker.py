@@ -51,6 +51,9 @@ def main():
     try:
         for line in sys.stdin:
             request = json.loads(line)
+            if request.get("type") == "probe":
+                emit({"type": "probed", "ok": True, "pid": os.getpid()})
+                continue
             if request.get("type") == "shutdown":
                 break
             started = time.perf_counter()

@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 
 from .config import DATA_DIR, Settings, VisionConfig
-from .locate_worker import LocateWorker
+from .locate_worker import LocateWorker, public_error
 from .models import SceneObject, SceneState
 from .vision import analyze_frame, assign_zones
 
@@ -84,6 +84,15 @@ class ColorDetector:
         pass
 
 
+def prepare_semantic_frame(frame: np.ndarray, max_dim: int) -> np.ndarray:
+    """Downscale so the long edge is at most max_dim. Never upscales."""
+    height, width = frame.shape[:2]
+    ratio = min(1, max_dim / max(height, width))
+    if ratio >= 1:
+        return frame
+    return cv2.resize(frame, (round(width * ratio), round(height * ratio)), interpolation=cv2.INTER_AREA)
+
+
 class LocateAnythingDetector:
     def __init__(self, cfg: Settings, worker=None):
         self.cfg = cfg
@@ -91,8 +100,7 @@ class LocateAnythingDetector:
 
     def detect(self, frame, now, labels=(), allow_missing=False):
         labels = parse_labels(",".join(labels))
-        ratio = min(1, 640 / max(frame.shape[:2]))
-        small = cv2.resize(frame, (round(frame.shape[1] * ratio), round(frame.shape[0] * ratio)))
+        small = prepare_semantic_frame(frame, self.cfg.semantic_max_dim)
         directory = DATA_DIR / "semantic-scans"
         directory.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(suffix=".png", dir=directory, delete=False) as f:
@@ -167,8 +175,10 @@ class LatestScan:
                 scene = self.detector.detect(request.frame, request.captured_at, request.labels,
                                              allow_missing=request.purpose == "setup_check")
                 result = ScanResult(request, scene)
+            except AmbiguousScan as exc:
+                result = ScanResult(request, None, str(exc), True)
             except Exception as exc:
-                result = ScanResult(request, None, str(exc), isinstance(exc, AmbiguousScan))
+                result = ScanResult(request, None, public_error(exc))
             with self.condition:
                 self.busy = False
                 if not self.closed and request.version == self.version:

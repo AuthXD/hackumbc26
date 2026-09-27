@@ -5,7 +5,7 @@ import {
   matDisplay, MatUnavailable, RawQuad, StabilizedMat, undoPoint, type Pt,
 } from "./MatView";
 import { PhoneLinkButton } from "./PhoneLink";
-import { statusView } from "./StatusCard";
+import { statusView, WORKER_LABEL } from "./StatusCard";
 import type { MatStatus, ServerUpdate } from "./types";
 
 const noop = () => {};
@@ -179,6 +179,26 @@ describe("status card with mat problems", () => {
     expect(statusView(practice, matDisplay(mat({ state: "uncalibrated", message: "Mat not calibrated." }), live))).toEqual(base);
     const unsteady = statusView(practice, matDisplay(mat({ state: "unsteady", message: "Settling… hold still." }), live));
     expect(unsteady).toMatchObject({ headline: base.headline, tone: "neutral", observed: "Settling… hold still." });
+  });
+});
+
+describe("semantic model readiness labels", () => {
+  it("uses plain loading and ready text, never raw worker tokens", () => {
+    expect(WORKER_LABEL).toEqual({
+      unloaded: "Model not loaded", loading: "Loading model", ready: "Model ready", error: "Model error",
+    });
+    const base: ServerUpdate = {
+      type: "update", mode: "idle",
+      detector: { kind: "semantic", betaEnabled: true, labels: ["a", "b"], workerState: "loading", scanState: "idle",
+        message: "", canScan: false, switchLocked: false, procedureKind: null },
+    };
+    expect(statusView(base).headline).toBe("Loading model");
+    expect(statusView({ ...base, detector: { ...base.detector!, workerState: "ready" } }).headline).toBe("Scan the settled table");
+    const broken = statusView({ ...base, detector: { ...base.detector!, workerState: "error",
+      workerMessage: "The object detector is unavailable. Try again, or use Color mode." } });
+    expect(broken.headline).toBe("Model error");
+    expect(broken.fix).toMatch(/Retry loading/);
+    expect(broken.observed).toContain("unavailable");
   });
 });
 
