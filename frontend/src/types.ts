@@ -56,7 +56,7 @@ export type PracticeState = {
   completed: number[];
 };
 
-export type TrackerStatus = "stable" | "settling" | "moving" | "occluded" | "empty";
+export type TrackerStatus = "stable" | "settling" | "moving" | "occluded" | "empty" | "untracked";
 
 export type Tracker = {
   status: TrackerStatus;

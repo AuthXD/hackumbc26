@@ -22,6 +22,7 @@ const TRACKER_LABEL: Record<TrackerStatus, string> = {
   moving: "Hands moving",
   occluded: "Object hidden",
   empty: "No objects",
+  untracked: "Mat not tracked",
 };
 
 export default function App() {

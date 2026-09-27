@@ -15,7 +15,7 @@ from typing import Literal
 from .config import StabilityConfig
 from .models import SceneState, arrangement_key
 
-TrackerStatus = Literal["stable", "settling", "moving", "occluded", "empty"]
+TrackerStatus = Literal["stable", "settling", "moving", "occluded", "empty", "untracked"]
 
 
 @dataclass
@@ -51,6 +51,10 @@ class StabilityTracker:
         """Start fresh; the next stable arrangement is emitted even if it equals the previous one."""
         self.required = set(required) if required else None
         self._last_emitted = None
+        self._clear_candidate()
+
+    def interrupt(self) -> None:
+        """Abandon the current settling window (camera moved / tracking lost) but keep what was committed."""
         self._clear_candidate()
 
     def update(self, scene: SceneState, motion: float, now: float) -> TrackerResult:

@@ -134,6 +134,15 @@ def get_phone_link() -> dict:
     return phone_link(settings.phone_public_url)
 
 
+@app.get("/api/mat-view.jpg")
+def mat_view() -> Response:
+    """Latest stabilized top-down mat image (latest only; the page asks when viewSeq changes)."""
+    data = session.mat_view_jpeg
+    if data is None:
+        raise HTTPException(404)
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
 @app.get("/api/keyframes/{key}.jpg")
 def keyframe(key: str) -> Response:
     data = session.keyframe(key)
@@ -192,6 +201,10 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 elif kind == "camera_status":
                     hub.sources.camera_status(ws, str(cmd.get("state", "")), str(cmd.get("message", "")))
                     snap = session.snapshot()
+                elif kind == "mat_calibrate":
+                    snap = await asyncio.to_thread(session.calibrate_mat, cmd.get("points"))
+                elif kind == "mat_clear":
+                    snap = session.clear_mat()
                 elif kind == "command":
                     snap = await asyncio.to_thread(session.command, str(cmd.get("action", "")))
                 elif kind == "calibrate":

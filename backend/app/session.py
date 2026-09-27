@@ -8,10 +8,14 @@ import time
 import uuid
 from typing import Literal
 
+import cv2
+import numpy as np
+
 from .config import DATA_DIR, ColorRange, Settings, default_colors, settings
 from .engine import Event, PracticeEngine, TeachRecorder, speak
 from .detectors import ColorDetector, DEFAULT_LABELS, LatestScan, LocateAnythingDetector, parse_labels
 from .history import CheckHistoryRepository, HistoryWriter, SetupCheckEvent, create_check_history_repository
+from .mat import MatFrame, MatService, canonical_vision, in_workspace
 from .models import Procedure, SceneState, StepText
 from .setups import (
     SavedSetup,
@@ -24,6 +28,8 @@ from .setups import (
 from .stability import StabilityTracker, TrackerResult
 from .vision import (
     MotionMeter,
+    analyze_frame,
+    assign_zones,
     color_from_sample,
     decode_jpeg,
     downscale,
@@ -36,6 +42,7 @@ Mode = Literal["idle", "teaching", "practicing"]
 PROCEDURE_FILE = DATA_DIR / "procedure.json"
 KEYFRAME_DIR = DATA_DIR / "keyframes"
 CALIBRATION_FILE = DATA_DIR / "calibration.json"
+MAT_DIR = DATA_DIR / "mat"  # per-camera mat calibrations; never touches procedures or setups
 SETUP_DIR = DATA_DIR / "setups"  # kept apart from procedure.json so Setup Check can never touch it
 
 PROCEDURE_ACTIONS = ("teach", "finish", "undo_step", "practice", "reset", "pause")
@@ -86,6 +93,16 @@ class Session:
         self.setup_result_stale = False  # the table moved after the last check
         self.pending_check: str | None = None  # setup id a submitted check scan belongs to
         self.last_scan_purpose: str | None = None
+        # Mat stabilization: which camera is supplying frames and what the mat tracker made of the last one.
+        self.mat = MatService(cfg.mat, MAT_DIR if persist else None)
+        self.frame_source = "webcam"
+        self.last_raw_frame = None  # the owner's untouched frame (calibration clicks refer to it)
+        self.mat_frame: MatFrame | None = None
+        self.mat_mode: tuple[str, bool] | None = None  # (source, bypass) of the previous frame
+        self.mat_view_jpeg: bytes | None = None  # latest stabilized top-down mat image
+        self.mat_view_seq = 0
+        self.vision_active = cfg.vision  # zones of the picture currently evaluated
+        self.scan_pose: tuple[str, int, object] | None = None  # (source, epoch, corners) at scan submit
         if persist:
             self._load()
             self._load_calibration()
@@ -102,23 +119,30 @@ class Session:
         frame = decode_jpeg(jpeg)
         if frame is None:
             return {"type": "update", "error": "Could not decode frame"}
-        small = downscale(frame, self.cfg.vision.process_width)
         with self.lock:
-            self.last_full_frame, self.last_jpeg, self.last_capture = frame, jpeg, now
+            image, view_jpeg, untrusted = self._stabilize(frame, jpeg, source, now)
+            if image is None:  # mat tracking lost: no scene, no verdicts, no commits
+                snap = self.snapshot([])
+                snap["frameMs"] = round((time.perf_counter() - t0) * 1000, 1)
+                return snap
+            small = downscale(image, self.cfg.vision.process_width)
+            self.last_full_frame, self.last_jpeg, self.last_capture = image, view_jpeg, now
             self.last_frame = small
             if self.detector_kind == "semantic":
-                events = self._semantic_frame(frame, small, now)
+                events = self._semantic_frame(image, small, now, untrusted)
                 snap = self.snapshot(events)
                 snap["frameMs"] = round((time.perf_counter() - t0) * 1000, 1)
                 return snap
-            scene = self.color_detector.detect(small, now)
-            scene = suppress_static_stacks(scene, self.reference_scene, self.cfg.vision)
+            scene = analyze_frame(small, self.vision_active, now)
+            scene = suppress_static_stacks(scene, self.reference_scene, self.vision_active)
             motion = self.meter.update(small)
+            if untrusted:  # camera settling / moving / a corner covered: show, but never commit
+                motion = float("inf")
             result = self.tracker.update(scene, motion, now)
             events: list[Event] = []
             if result.new_stable is not None:
                 self.reference_scene = result.new_stable
-                events = self._on_stable(result.new_stable, jpeg)
+                events = self._on_stable(result.new_stable, view_jpeg)
             self.last_scene, self.last_tracker, self.last_frame = scene, result, small
             snap = self.snapshot(events)
         snap["frameMs"] = round((time.perf_counter() - t0) * 1000, 1)
@@ -132,11 +156,12 @@ class Session:
         self.last_scene = None
         self.scan_status, self.scan_message = "idle", message
 
-    def _semantic_frame(self, frame, small, now):
+    def _semantic_frame(self, frame, small, now, untrusted: bool = False):
         motion = self.meter.update(small)
-        if motion > self.cfg.stability.motion_threshold:
+        if untrusted or motion > self.cfg.stability.motion_threshold:
             self.still_since, self.still_frames = now, 0
-            self._invalidate_scan()
+            self._invalidate_scan(self.mat_frame.message if untrusted else
+                                  "Scene changed. Hold still and press Scan Objects.")
             self.last_tracker = TrackerResult("moving", motion)
             return []
         if self.still_since is None:
@@ -155,6 +180,9 @@ class Session:
         if drift.update(frame) > self.cfg.stability.motion_threshold:
             self._invalidate_scan("Table changed during the scan. Hold still and scan again.")
             return []
+        if not self._scan_pose_ok():
+            self._invalidate_scan("The camera moved during the scan. Hold still and scan again.")
+            return []
         if result.request.purpose == "setup_check":
             return self._finish_setup_check(result)
         if result.scene is None:
@@ -162,6 +190,12 @@ class Session:
             self.scan_status = "ambiguous" if result.ambiguous else "error"
             self.scan_message = result.error
             return []
+        placed = self._in_workspace(result.scene, strict=True)
+        if isinstance(placed, str):
+            self.last_scene = None
+            self.scan_status, self.scan_message = "ambiguous", placed
+            return []
+        result.scene = placed
         self.last_scene = self.reference_scene = result.scene
         self.scan_status = "valid"
         self.last_scan_purpose = "procedure"
@@ -203,13 +237,14 @@ class Session:
         else:
             self.last_scene = None
             self.pending_check = None
+            self.scan_pose = self._pose()
             self.scanner.submit(self.last_full_frame, self.last_jpeg, self.semantic_labels, self.last_capture)
             self.scan_status, self.scan_message = "scanning", "Scanning objects. Keep the table still."
             self.notice = ""
         return []
 
     def _can_scan(self):
-        return (self.last_full_frame is not None and self.still_since is not None
+        return (self.last_full_frame is not None and self.still_since is not None and self._mat_ok()
                 and self.still_frames >= self.cfg.stability.min_frames
                 and (self.last_capture - self.still_since) * 1000 >= self.cfg.stability.stable_ms)
 
@@ -320,6 +355,113 @@ class Session:
         self.notice = "Reset. Ready to teach a new procedure."
         return []
 
+    # -- mat stabilization ------------------------------------------------------------------------------
+
+    def _stabilize(self, frame, jpeg: bytes, source: str, now: float):
+        """Route one frame through mat tracking. Returns (image to evaluate, its JPEG, untrusted) or
+        (None, None, True) when tracking failed and nothing may be evaluated."""
+        self.frame_source = source
+        self.last_raw_frame = frame
+        mat = self.mat.process(source, frame, now)
+        self.mat_frame = mat
+        mode = (source, mat.bypass)
+        if mode != self.mat_mode:  # different camera or coordinate system: start clean
+            self.mat_mode = mode
+            self.tracker.interrupt()
+            self.reference_scene = None
+            self.meter.reset()
+        if mat.bypass:
+            self.vision_active = self.cfg.vision
+            return frame, jpeg, False
+        if mat.canonical is None:
+            self._mat_blocked(mat.message)
+            return None, None, True
+        cal = self.mat.calibration(source)
+        self.vision_active = canonical_vision(self.cfg.vision, cal.canonical_size, self.cfg.mat.band_fraction)
+        ok, buf = cv2.imencode(".jpg", mat.canonical, [cv2.IMWRITE_JPEG_QUALITY, 75])
+        view = buf.tobytes() if ok else jpeg
+        self.mat_view_jpeg, self.mat_view_seq = view, self.mat_view_seq + 1
+        if not mat.trustworthy:
+            self.tracker.interrupt()  # a settling window must start over once the camera is steady
+        return mat.detect, view, not mat.trustworthy
+
+    def _mat_blocked(self, message: str) -> None:
+        """Tracking lost: forget the scene, stop any stability window and in-flight scan, stale old verdicts."""
+        self.tracker.interrupt()
+        self.meter.reset()
+        self.last_scene = None
+        self.last_tracker = TrackerResult("untracked", 0.0)
+        self.still_since, self.still_frames = None, 0
+        self._invalidate_scan(message)
+
+    def _mat_active(self) -> bool:
+        return self.mat_frame is not None and not self.mat_frame.bypass
+
+    def _mat_ok(self) -> bool:
+        return not self._mat_active() or self.mat_frame.trustworthy
+
+    def _pose(self):
+        if not self._mat_active() or self.mat_frame.track is None or self.mat_frame.track.corners is None:
+            return None
+        return (self.frame_source, self.mat.epoch(self.frame_source), self.mat_frame.track.corners.copy())
+
+    def _scan_pose_ok(self) -> bool:
+        """A scan result counts only if the mat stayed tracked, trusted and put since it was submitted."""
+        submitted, current = self.scan_pose, self._pose()
+        if submitted is None and current is None:
+            return True
+        if submitted is None or current is None or not self._mat_ok():
+            return False
+        source, epoch, corners = submitted
+        if source != current[0] or epoch != current[1]:
+            return False
+        h, w = self.last_raw_frame.shape[:2]
+        shift = float(np.max(np.linalg.norm(current[2] - corners, axis=1)))
+        return shift <= self.cfg.mat.scan_max_shift_frac * float(np.hypot(w, h))
+
+    def _in_workspace(self, scene: SceneState, strict: bool):
+        """Canonical zones for semantic boxes, and ignore anything on the landmark band.
+        strict (procedure scans): an ignored object makes the scan ambiguous instead of 'missing'."""
+        if not self._mat_active():
+            return scene
+        band = self.cfg.mat.band_fraction
+        kept = [o for o in scene.objects if in_workspace(o.center[0], o.center[1], band)]
+        outside = [o for o in scene.objects if o not in kept]
+        if outside and strict:
+            names = ", ".join(o.id for o in outside)
+            return f"{names} is on the edge band of the mat. Move it inside the workspace and scan again."
+        assign_zones(kept, self.vision_active)
+        return SceneState(objects=kept, captured_at=scene.captured_at)
+
+    def calibrate_mat(self, points) -> dict:
+        """Save the four clicked landmarks for the camera currently supplying frames."""
+        with self.lock:
+            if self.frame_source not in ("webcam", "phone"):
+                self.notice = "The simulator does not need mat calibration."
+            elif self.last_raw_frame is None:
+                self.notice = "No camera picture yet. Wait for the video, then calibrate."
+            else:
+                try:
+                    self.mat.calibrate(self.frame_source, self.last_raw_frame, points)
+                except ValueError as exc:
+                    self.notice = f"Mat not calibrated: {str(exc).splitlines()[0]}"
+                else:
+                    self.mat_mode = None  # next frame starts a clean stability window
+                    self._invalidate_scan("Mat calibrated. Hold still, then scan.")
+                    self.notice = "Mat calibrated. Hold still until it says Mat tracking."
+            return self.snapshot()
+
+    def clear_mat(self) -> dict:
+        with self.lock:
+            self.mat.clear(self.frame_source)
+            self.mat_mode = None
+            self._invalidate_scan()
+            self.notice = "Mat calibration removed for this camera."
+            return self.snapshot()
+
+    def mat_status(self) -> dict:
+        return {**self.mat.status(self.frame_source), "viewSeq": self.mat_view_seq}
+
     # -- Setup Check ----------------------------------------------------------------------------
 
     def set_workspace(self, workspace: str) -> dict:
@@ -415,6 +557,7 @@ class Session:
                 self._clear_setup_result()
                 self.last_scene = None
                 self.pending_check = setup.id
+                self.scan_pose = self._pose()
                 self.scanner.submit(self.last_full_frame, self.last_jpeg, vocabulary, self.last_capture,
                                     purpose="setup_check")
                 self.scan_status, self.scan_message = "scanning", f'Checking "{setup.name}". Keep the table still.'
@@ -429,6 +572,8 @@ class Session:
             self.scan_status = "ambiguous" if result.ambiguous else "error"
             self.scan_message = f"Setup not checked: {result.error}"
             return []
+        placed = self._in_workspace(result.scene, strict=False)  # objects on the landmark band are ignored
+        result.scene = placed
         requested = {label.casefold() for label in result.request.labels}
         expected = {o.label.casefold() for o in setup.objects} if setup else set()
         if setup is None or setup_id != self.selected_setup_id or not expected <= requested:
@@ -665,8 +810,9 @@ class Session:
             "scene": self.last_scene.to_json() if self.last_scene else None,
             "zones": [
                 {"id": z.id, "label": z.label, "x": z.x, "y": z.y, "w": z.w, "h": z.h}
-                for z in self.cfg.vision.zones
+                for z in self.vision_active.zones
             ],
+            "mat": self.mat_status(),
             "colors": {c.name: c.display for c in self.cfg.vision.colors},
             "tracker": self.last_tracker.to_json() if self.last_tracker else None,
             "teach": self.recorder.to_json() if self.recorder and self.mode == "teaching" else None,
