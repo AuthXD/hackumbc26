@@ -11,6 +11,7 @@ from typing import Literal
 from .config import DATA_DIR, ColorRange, Settings, default_colors, settings
 from .engine import Event, PracticeEngine, TeachRecorder, speak
 from .detectors import ColorDetector, DEFAULT_LABELS, LatestScan, LocateAnythingDetector, parse_labels
+from .history import CheckHistoryRepository, HistoryWriter, SetupCheckEvent, create_check_history_repository
 from .models import Procedure, SceneState, StepText
 from .setups import (
     SavedSetup,
@@ -42,7 +43,8 @@ PROCEDURE_ACTIONS = ("teach", "finish", "undo_step", "practice", "reset", "pause
 
 class Session:
     def __init__(self, cfg: Settings = settings, persist: bool = True,
-                 setup_repository: SetupRepository | None = None) -> None:
+                 setup_repository: SetupRepository | None = None,
+                 history_repository: CheckHistoryRepository | None = None) -> None:
         self.cfg = cfg
         self.persist = persist
         self.lock = threading.RLock()
@@ -74,6 +76,11 @@ class Session:
         self.workspace: Literal["procedure", "setup"] = "procedure"
         # Local JSON, or Tiger Cloud when TIGER_DATABASE_URL is set. The choice lives in setups.py; no SQL here.
         self.setups: SetupRepository = setup_repository or create_setup_repository(cfg, SETUP_DIR)
+        # Check history: Tiger hypertable when configured, otherwise explicitly disabled. All history I/O
+        # happens on the writer's single background thread, never under Session.lock.
+        self.history: CheckHistoryRepository = history_repository or create_check_history_repository(cfg)
+        self.history_writer = HistoryWriter(self.history, maxsize=cfg.history_queue_size)
+        self.setup_event: SetupCheckEvent | None = None  # the one event for the current verdict
         self.selected_setup_id: str | None = None
         self.setup_result: SetupCheckResult | None = None
         self.setup_result_stale = False  # the table moved after the last check
@@ -225,6 +232,7 @@ class Session:
 
     def close(self):
         self.scanner.close()
+        self.history_writer.close(timeout=self.cfg.history_close_timeout)
 
     def _on_stable(self, scene: SceneState, jpeg: bytes) -> list[Event]:
         if self.mode != "idle":
@@ -361,6 +369,7 @@ class Session:
         with self.lock:
             self.selected_setup_id = setup.id
             self._clear_setup_result()
+            self.history_writer.request_refresh(setup.id)
             self.notice = f'Saved setup "{setup.name}" with {len(setup.objects)} objects.'
             return self.snapshot()
 
@@ -382,6 +391,7 @@ class Session:
                 self.selected_setup_id = setup_id
                 self._clear_setup_result()
                 self.pending_check = None
+                self.history_writer.request_refresh(setup_id)
                 self.notice = ""
             return self.snapshot()
 
@@ -426,6 +436,11 @@ class Session:
             return []
         self.setup_result = check_setup(setup, result.scene, result.scene.captured_at)
         self.setup_result_stale = False
+        # One accepted verdict -> one event_id. This is the only place events are created, and a scan
+        # result is delivered once, so re-sent frames and snapshots never add history. submit() never
+        # blocks: the verdict below is final whether or not the write later succeeds.
+        self.setup_event = SetupCheckEvent.from_result(self.setup_result)
+        self.history_writer.submit(self.setup_event)
         self.last_scene = result.scene
         self.scan_status, self.last_scan_purpose = "valid", "setup_check"
         self.scan_message = "Setup checked. Fix anything listed, hold still, and check again."
@@ -443,6 +458,30 @@ class Session:
 
     def _clear_setup_result(self) -> None:
         self.setup_result, self.setup_result_stale = None, False
+        self.setup_event = None
+
+    def refresh_history(self) -> dict:
+        """Explicit Refresh: re-verify the hypertable and reload the selected setup's history (background)."""
+        with self.lock:
+            queued = self.history_writer.request_refresh(None)
+            if self.selected_setup_id:
+                self.history_writer.request_refresh(self.selected_setup_id)
+            state = self.history.status().state
+            self.notice = ("History is disabled without Tiger Data." if state == "disabled"
+                           else "Refreshing history…" if queued else "History refresh already queued.")
+            return self.snapshot()
+
+    def history_status(self) -> dict:
+        """Cache-only view for snapshots and /api/health: no database access on this hot path."""
+        sid = self.selected_setup_id
+        summary = self.history.summary(sid) if sid else None
+        return {
+            **self.history.status().to_json(),
+            "recent": [e.to_json() for e in self.history.recent(sid)] if sid else [],
+            "summary": summary.to_json() if summary else None,
+            "writer": self.history_writer.stats(),
+            "errors": list(self.history.errors),
+        }
 
     def setup_status(self) -> dict:
         setups = self.setups.list()
@@ -458,6 +497,10 @@ class Session:
             "result": self.setup_result.to_json() if self.setup_result else None,
             "resultStale": self.setup_result_stale,
             "repositoryErrors": list(self.setups.errors),
+            "history": self.history_status(),
+            "resultHistory": {"eventId": str(self.setup_event.event_id),
+                              "state": self.history_writer.event_state(self.setup_event.event_id)}
+            if self.setup_event else None,
         }
 
     # -- color calibration ----------------------------------------------------------------------

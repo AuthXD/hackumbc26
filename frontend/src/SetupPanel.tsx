@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SetupHistory } from "./SetupHistory";
 import type { ServerUpdate, SetupObject } from "./types";
 
 const zoneText = (zone: string | null) => (zone ? `Zone ${zone}` : "outside the zones");
@@ -79,6 +80,8 @@ export function SetupPanel({ u, send }: { u: ServerUpdate | null; send: (payload
           Skipped unreadable saved setups: {setup.repositoryErrors.join("; ")}
         </p>
       )}
+
+      <SetupHistory setup={setup} send={send} />
 
       <div className="setup-grid">
         {setup.selected && (

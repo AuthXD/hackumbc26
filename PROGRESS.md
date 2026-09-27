@@ -229,3 +229,30 @@ Key decisions:
   `tiger:check`. An isolated app with an unreachable `TIGER_DATABASE_URL` started normally and showed
   "Tiger Data unavailable"; no credential appeared in health, logs, or the page.
 - **Live Tiger Cloud verification is pending**: no `TIGER_DATABASE_URL` exists on this machine.
+
+### Tiger Data setup-check history and readiness analytics (2026-09-26)
+- `SetupCheckEvent` (immutable, one `event_id` per accepted verdict; status must match its findings),
+  `ReadinessSummary`/`ReadinessBucket`, a separate `CheckHistoryRepository` protocol, `DisabledCheckHistory` for
+  local mode, and one bounded `HistoryWriter` thread (queue 32, non-blocking submit, visible overflow, per-event
+  state, 5 s drain on close). Session creates the event only in `_finish_setup_check`; no DB call under its lock.
+- Migration `002_tiger_setup_check_history.sql`: `teachback_setup_checks` hypertable, `PRIMARY KEY (event_id,
+  checked_at)`, status/slug/name/JSON-array CHECKs, `(setup_id, checked_at DESC)` index. Inserts use
+  `ON CONFLICT (event_id, checked_at) DO NOTHING`; there is no UPDATE or DELETE. Summaries use
+  `time_bucket('1 hour', checked_at)` over 24 h plus all-time totals. `tiger:check` applies every numbered
+  migration in sorted order, twice.
+- **Compatibility decision (live service):** PostgreSQL 18.6, TimescaleDB 2.30.1. The modern
+  `CREATE TABLE ... WITH (tsdb.hypertable, tsdb.partition_column = 'checked_at')` form is accepted, including with
+  `IF NOT EXISTS` on re-runs, so no `create_hypertable()` fallback is needed. On this version that form also
+  enables the columnstore and auto-creates a `policy_compression` job (1-day schedule) plus a default
+  `checked_at` index, all verified via `timescaledb_information`. This is kept as-is: the history is append-only
+  and inserts target current (uncompressed) chunks. Default chunk interval: 7 days.
+- Live verification (sanitized): 002 was first validated inside a rolled-back transaction (applied twice,
+  hypertable metadata, insert, duplicate ignored, `time_bucket`, status CHECK, and no table after rollback).
+  `npm run tiger:check` then passed twice (TLS; 001+002 applied and re-applied; setups probe; hypertable
+  partitioned on `checked_at`; two events, duplicate ignored, recent, `time_bucket` summary, rows validated;
+  0 rows and 0 chunks left). The app's real `HistoryWriter` + `TigerCheckHistoryRepository` ran against live
+  Tiger inside one rolled-back transaction: 2 saved, re-submit not duplicated, summary 2 checks / 50% / one
+  hourly bucket, recent validated, 0 rows left. An isolated app on :8011 reported storage and history
+  `tiger/ready`, the panel showed "History: Tiger Data", and 0 credential fragments appeared in health or logs.
+- Not yet exercised live: a full camera-driven Setup Check writing a *committed* history row (needs the
+  webcam + semantic model), and the readiness/recent lists rendered with real data in the browser.

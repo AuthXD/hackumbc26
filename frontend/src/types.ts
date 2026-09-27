@@ -96,6 +96,42 @@ export type SetupCheckResult = {
 
 export type StorageStatus = { provider: "local" | "tiger"; state: "ready" | "error"; message: string };
 
+export type SetupCheckEvent = {
+  eventId: string;
+  checkedAt: number;
+  setupId: string;
+  setupName: string;
+  status: "complete" | "needs_attention";
+  correct: SetupObject[];
+  missing: SetupObject[];
+  unexpected: SetupObject[];
+  misplaced: { label: string; expectedZone: string | null; observedZone: string | null }[];
+};
+
+export type ReadinessSummary = {
+  setupId: string;
+  totalChecks: number;
+  completeChecks: number;
+  needsAttentionChecks: number;
+  readinessPercent: number | null;
+  latestCheckedAt: number | null;
+  windowHours: number;
+  bucketHours: number;
+  buckets: { bucketStart: number; total: number; complete: number }[];
+};
+
+export type HistoryState = {
+  provider: "tiger" | "local";
+  state: "ready" | "disabled" | "error";
+  message: string;
+  recent: SetupCheckEvent[];
+  summary: ReadinessSummary | null;
+  writer: { queued: number; capacity: number; saved: number; failed: number; dropped: number; lastProblem: string };
+  errors: string[];
+};
+
+export type EventHistoryState = "pending" | "saved" | "failed" | "dropped" | "disabled";
+
 export type SetupState = {
   available: boolean;
   storage: StorageStatus;
@@ -107,6 +143,8 @@ export type SetupState = {
   result: SetupCheckResult | null;
   resultStale: boolean;
   repositoryErrors: string[];
+  history: HistoryState;
+  resultHistory: { eventId: string; state: EventHistoryState | null } | null;
 };
 
 export type ServerUpdate = {

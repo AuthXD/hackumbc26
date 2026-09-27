@@ -75,3 +75,11 @@ shows **Storage: Tiger Data**. Point at it after step 1:
 If the panel instead says **Tiger Data unavailable** (for example, venue Wi-Fi), capture is disabled on purpose.
 Press **Retry connection**, or remove the variable and restart to demo with local storage. Never show `.env` on
 screen.
+
+**Readiness history (Tiger Data time-series).** Each check you ran above also landed in a TigerData hypertable.
+Point at the panel's **Readiness** and **Recent checks** lists:
+> "Every check is an immutable time-series event. TigerData's time_bucket turns them into an hourly readiness
+> score, so a lab manager can see *when* benches were ready, not just whether one is ready now."
+
+The pill next to the verdict says whether *this* check was saved. If history is unavailable, the verdict is
+still correct; only the record is missing, and the UI says so.

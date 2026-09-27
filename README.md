@@ -109,6 +109,24 @@ the Setup panel shows **Tiger Data unavailable** with capture disabled. Nothing 
 files instead. Connection details never appear in the UI, `/api/health`, or logs. Only an error class such as
 `OperationalError` is shown.
 
+### Setup Check history and readiness (Tiger Data time-series)
+
+With Tiger configured, every completed Setup Check is also appended as one immutable event to
+`teachback_setup_checks`, a TigerData **hypertable** partitioned on `checked_at` (migration 002, applied by
+`npm run tiger:check`). For the selected setup, the Setup panel shows:
+
+- **History: Tiger Data** (or **History unavailable**) and whether *this* check was saved, is still saving,
+  or was **not** saved (write failed, or the queue was full).
+- **Readiness**: the percentage of checks that were complete, total / complete / needed-attention counts, the
+  last check time, and hourly counts for the last 24 h, computed in the database with `time_bucket`.
+- **Recent checks**: the five newest, with time and outcome.
+
+The verdict never waits for history. Events go through one background writer with a bounded queue (32).
+Overflow and failed writes are reported, never shown as saved. Each check has one `event_id`; retries are
+idempotent (`ON CONFLICT DO NOTHING` on `(event_id, checked_at)`), and history is append-only. History reads
+come from a cache refreshed at startup, after a successful write, on setup selection, and on **Refresh
+history**. Without Tiger, history is shown as unavailable (local mode) and Setup Check itself works unchanged.
+
 ---
 
 ## Physical setup
@@ -157,10 +175,10 @@ themselves live in `backend/app/config.py`.
 npm test
 ```
 
-This runs 125 backend tests: the sequence engine, vision on synthetic JPEG frames, the stability filter, end-to-end
+This runs 145 backend tests: the sequence engine, vision on synthetic JPEG frames, the stability filter, end-to-end
 sessions with a simulated hand, semantic scan scheduling and worker failures, Setup Check verdicts and
-persistence, Tiger Data persistence against an offline psycopg fake (no network or credentials needed),
-integration fallbacks, and an app smoke test.
+persistence, Tiger Data persistence and check history against an offline psycopg fake (no network or credentials
+needed), the bounded history writer, integration fallbacks, and an app smoke test.
 
 ```bash
 npm run demo:check
@@ -186,9 +204,10 @@ backend/app/
   describe.py      deterministic step / correction wording
   session.py       modes, keyframes, persistence, Setup Check workspace
   setups.py        Setup Check types, SetupRepository + local JSON store + selection, deterministic checker
-  tiger.py         TigerSetupRepository (psycopg 3, TLS, parameterized SQL, cached reads)
-backend/sql/       001_tiger_setups.sql (idempotent migration)
-backend/tiger_check.py  npm run tiger:check: migrate + rolled-back verification
+  history.py       SetupCheckEvent, readiness summary, CheckHistoryRepository, bounded HistoryWriter
+  tiger.py         Tiger setups + check-history repositories (psycopg 3, TLS, parameterized SQL, caches)
+backend/sql/       001_tiger_setups.sql, 002_tiger_setup_check_history.sql (hypertable), applied in order
+backend/tiger_check.py  npm run tiger:check: migrate + rolled-back verification of both tables
   integrations.py  Gemini step wording, ElevenLabs voice (both optional)
   main.py          FastAPI: /ws, /api/speak, /api/keyframes
 backend/tests/     pytest suite
@@ -227,6 +246,10 @@ The local LocateAnything benchmark and constrained beta decision are documented 
 - Tiger Data storage covers saved setups only (not procedures). Setups saved from another machine appear after
   a restart or **Retry connection**, not live. Moving from local JSON to Tiger does not copy existing local
   setups; capture them again.
+- Check history needs Tiger (it is off in local mode) and is append-only; there is no retention policy yet. The
+  readiness view shows the selected setup only, with hourly buckets for the last 24 h. Events still queued when
+  the server stops get up to 5 s to drain. A process crash loses queued (unsaved) events, and they are never
+  shown as saved.
 - Stacking is inferred from a single 2D view. Touching objects can look stacked. Objects that haven't moved since
   the last settled state are never newly counted as stacked, which removes most false positives.
 - An object hidden inside an opaque container counts as occluded. Use open or marked container areas.

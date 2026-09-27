@@ -62,6 +62,26 @@ procedure commands are refused and the detector stays semantic.
   events) `teachback_setups(id TEXT PK, name, objects JSONB, created_at, updated_at DEFAULT NOW())`. CHECK
   constraints cover the id slug, name length, and a 1–6 element objects array. It is applied only by the explicit
   `npm run tiger:check`, which also runs a rolled-back insert/upsert/read/constraint probe.
+- **History** (`history.py`, `tiger.py`, `sql/002_tiger_setup_check_history.sql`). Every accepted verdict
+  becomes one immutable **SetupCheckEvent** `{eventId, checkedAt, setupId, setupName (snapshot), status,
+  correct, missing, unexpected, misplaced}`, created only in `_finish_setup_check`. A scan result is delivered
+  once, so repeated frames or snapshots cannot add events. **CheckHistoryRepository** (`record` / `recent` /
+  `summary` / `refresh` / `status` / `close`) is separate from SetupRepository.
+  - `TigerCheckHistoryRepository`: `teachback_setup_checks` is a TigerData hypertable
+    (`WITH (tsdb.hypertable, tsdb.partition_column='checked_at')`) with `PRIMARY KEY (event_id, checked_at)`
+    (unique keys must include the partition column), a status CHECK, JSON-array findings, and an index on
+    `(setup_id, checked_at DESC)`. Inserts are `ON CONFLICT (event_id, checked_at) DO NOTHING`, so retries are
+    idempotent; there is no UPDATE or DELETE. The readiness summary uses `time_bucket('1 hour', checked_at)`
+    over 24 h plus all-time totals. Rows become `SetupCheckEvent` / `ReadinessBucket` / `ReadinessSummary`,
+    and invalid ones are skipped into `errors`. The startup check requires the table to be a hypertable
+    according to `timescaledb_information.hypertables`.
+  - `DisabledCheckHistory` (no Tiger): state `disabled`. Checks still work, and nothing claims to be recorded.
+  - **HistoryWriter**: one daemon thread and one bounded `queue.Queue` (32) for all history I/O. `submit()` and
+    `request_refresh()` never block (they run under `Session.lock`). A full queue drops the job, counts it,
+    and logs it. Each `event_id` is accepted at most once, with per-event state pending → saved / failed /
+    dropped / disabled. A successful write triggers a refresh of that setup's caches. `close()` stops intake,
+    drains accepted jobs, and joins within `history_close_timeout` (5 s). Snapshots and `/api/health` read
+    caches only, and the writer notifies the event loop to broadcast when history changes.
 - **Capture** requires an accepted *strict* semantic scan: exactly one box per configured description.
 - **Check** submits a scan with `purpose="setup_check"`. Its vocabulary is the setup's labels plus the other
   configured descriptions (max 6). Only that purpose uses `allow_missing`, because absence is the finding; duplicate,
@@ -109,4 +129,7 @@ procedure commands are refused and the detector stays semantic.
 - `test_tiger.py` (+ `fake_tiger.py`, an offline psycopg fake with transactions and the schema's constraints):
   selection, idempotent migration, parameterized upsert, row validation, outage without fallback, refused capture,
   credential redaction, cache use, TLS enforcement, the non-blocking save, and the `tiger:check` flow.
+- `test_history.py`: event model, migration order and idempotency, hypertable and composite key, append-only
+  parameterized insert, one event per check, non-blocking writes, visible overflow, failed writes never shown as
+  saved, secret redaction, cache-only reads, `time_bucket` validation, local disabled mode, and a bounded drain.
 - `demo_check.py`: three full demos against the live server.

@@ -113,7 +113,7 @@ def test_migration_is_an_idempotent_plain_table():
     db = FakeTiger()
     for _ in range(3):  # applying repeatedly never fails and never drops data
         with db.connect(SECRET_URL, 5) as conn:
-            tiger.apply_migration(conn)
+            tiger.apply_migrations(conn)
     assert db.table_exists
 
 
@@ -361,7 +361,7 @@ def test_check_command_failures_are_sanitized():
     db.fail_on = ("INSERT INTO teachback_setups (id, name, objects, created_at) VALUES", leaky_error(psycopg.errors.InternalError))
     lines = []
     assert tiger_check.run(SECRET_URL, connect=db.connect, out=lines.append) == 1
-    assert lines[-1] == "FAIL at verify: InternalError" and db.rows == {}
+    assert lines[-1] == "FAIL at verify setups: InternalError" and db.rows == {}
     assert_no_secrets(*lines)
 
 

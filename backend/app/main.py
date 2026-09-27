@@ -23,8 +23,15 @@ voice = ElevenLabsVoice(settings)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    loop = asyncio.get_running_loop()
+
+    def history_changed() -> None:  # runs on the history writer thread
+        loop.call_soon_threadsafe(lambda: asyncio.create_task(hub.broadcast(session.snapshot())))
+
+    session.history_writer.on_change = history_changed
     yield
-    await asyncio.to_thread(session.close)
+    session.history_writer.on_change = None
+    await asyncio.to_thread(session.close)  # drains accepted history events within a bounded timeout
 
 
 app = FastAPI(title="TeachBack", lifespan=lifespan)
@@ -78,7 +85,8 @@ async def _describe(index: int, after_image: str | None) -> None:
 @app.get("/api/health")
 def health() -> dict:
     return {"ok": True, "mode": session.mode, "gemini": gemini.enabled, "elevenlabs": voice.enabled,
-            "detector": session.detector_status(), "storage": session.setups.status().to_json()}
+            "detector": session.detector_status(), "storage": session.setups.status().to_json(),
+            "history": {**session.history.status().to_json(), "writer": session.history_writer.stats()}}
 
 
 @app.get("/api/keyframes/{key}.jpg")
@@ -141,6 +149,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     snap = session.check_setup()
                 elif kind == "setup_refresh":
                     snap = await asyncio.to_thread(session.refresh_setups)
+                elif kind == "history_refresh":
+                    snap = session.refresh_history()
                 else:
                     continue
                 await hub.broadcast(snap)

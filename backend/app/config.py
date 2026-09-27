@@ -117,6 +117,8 @@ class Settings:
     tiger_database_url: str = field(default_factory=lambda: os.getenv("TIGER_DATABASE_URL", "").strip(), repr=False)
     tiger_connect_timeout: int = 5  # seconds, per connection attempt
     tiger_statement_timeout_ms: int = 5000  # per transaction
+    history_queue_size: int = 32  # bounded; overflow is reported, never silent
+    history_close_timeout: float = 5.0  # seconds to drain accepted events at shutdown
 
 
 settings = Settings()

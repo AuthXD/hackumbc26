@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 import psycopg
@@ -26,7 +28,8 @@ from .setups import SavedSetup, SetupStorageError, StorageStatus
 
 log = logging.getLogger("teachback.tiger")
 
-MIGRATION_FILE = BACKEND_ROOT / "sql" / "001_tiger_setups.sql"
+MIGRATIONS_DIR = BACKEND_ROOT / "sql"
+MIGRATION_FILE = MIGRATIONS_DIR / "001_tiger_setups.sql"
 
 SET_STATEMENT_TIMEOUT_SQL = "SELECT set_config('statement_timeout', %s, true)"
 SELECT_SETUPS_SQL = "SELECT id, name, objects, created_at FROM teachback_setups ORDER BY id"
@@ -60,9 +63,14 @@ def connect_tiger(url: str, connect_timeout: int) -> psycopg.Connection:
     return conn
 
 
-def migration_statements() -> list[str]:
-    """The migration file split into statements (it has no functions or dollar-quoting)."""
-    text = MIGRATION_FILE.read_text(encoding="utf-8")
+def migration_files() -> list[Path]:
+    """Every numbered migration (NNN_name.sql) in backend/sql, in sorted order."""
+    return sorted(p for p in MIGRATIONS_DIR.glob("*.sql") if re.match(r"^\d{3}_[a-z0-9_]+\.sql$", p.name))
+
+
+def migration_statements(path: Path | None = None) -> list[str]:
+    """One migration file split into statements (they use no functions or dollar-quoting)."""
+    text = (path or MIGRATION_FILE).read_text(encoding="utf-8")
     statements = []
     for chunk in text.split(";\n"):
         lines = chunk.strip().splitlines()
@@ -73,10 +81,15 @@ def migration_statements() -> list[str]:
     return statements
 
 
-def apply_migration(conn: Any) -> None:
+def apply_migrations(conn: Any) -> list[str]:
+    """Apply every numbered migration in order (each is idempotent). Returns the file names applied."""
+    applied = []
     with conn.cursor() as cur:
-        for statement in migration_statements():
-            cur.execute(statement)
+        for path in migration_files():
+            for statement in migration_statements(path):
+                cur.execute(statement)
+            applied.append(path.stem)
+    return applied
 
 
 def setup_params(setup: SavedSetup) -> tuple:
@@ -196,3 +209,207 @@ class TigerSetupRepository:
     def status(self) -> StorageStatus:
         with self._lock:
             return self._status
+
+
+# -- Setup Check history (TigerData hypertable) -----------------------------------------------------
+
+from datetime import timedelta  # noqa: E402
+
+from .history import (  # noqa: E402
+    BUCKET_HOURS,
+    RECENT_LIMIT,
+    SUMMARY_WINDOW_HOURS,
+    HistoryStatus,
+    HistoryWriteError,
+    ReadinessBucket,
+    ReadinessSummary,
+    SetupCheckEvent,
+)
+
+CHECK_TABLE = "teachback_setup_checks"
+CHECK_COLUMNS = "event_id, checked_at, setup_id, setup_name, status, correct, missing, unexpected, misplaced"
+HYPERTABLE_SQL = "SELECT count(*) FROM timescaledb_information.hypertables WHERE hypertable_name = %s"
+PARTITION_COLUMN_SQL = "SELECT column_name FROM timescaledb_information.dimensions WHERE hypertable_name = %s"
+INSERT_CHECK_SQL = (
+    "INSERT INTO teachback_setup_checks "
+    "(checked_at, event_id, setup_id, setup_name, status, correct, missing, unexpected, misplaced) "
+    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
+    "ON CONFLICT (event_id, checked_at) DO NOTHING RETURNING event_id"
+)
+RECENT_CHECKS_SQL = (
+    f"SELECT {CHECK_COLUMNS} FROM teachback_setup_checks WHERE setup_id = %s ORDER BY checked_at DESC LIMIT %s"
+)
+SUMMARY_TOTALS_SQL = (
+    "SELECT count(*), count(*) FILTER (WHERE status = %s), max(checked_at) "
+    "FROM teachback_setup_checks WHERE setup_id = %s"
+)
+# TigerData time_bucket: hourly readiness over the recent window, computed in the database.
+SUMMARY_BUCKETS_SQL = (
+    "SELECT time_bucket(%s::interval, checked_at) AS bucket, count(*), count(*) FILTER (WHERE status = %s) "
+    "FROM teachback_setup_checks WHERE setup_id = %s AND checked_at >= now() - %s::interval "
+    "GROUP BY bucket ORDER BY bucket"
+)
+
+
+def event_params(event: SetupCheckEvent) -> tuple:
+    def dump(items):
+        return Jsonb([i.to_json() for i in items])
+
+    return (
+        datetime.fromtimestamp(event.checked_at, tz=timezone.utc),
+        event.event_id,
+        event.setup_id,
+        event.setup_name,
+        event.status,
+        dump(event.correct),
+        dump(event.missing),
+        dump(event.unexpected),
+        dump(event.misplaced),
+    )
+
+
+def _epoch(value: Any) -> Any:
+    return value.timestamp() if isinstance(value, datetime) else value
+
+
+def _json(value: Any) -> Any:
+    return json.loads(value) if isinstance(value, (str, bytes)) else value
+
+
+def row_to_event(row: Any) -> SetupCheckEvent:
+    """Every history row passes SetupCheckEvent validation (status must match its findings)."""
+    event_id, checked_at, setup_id, setup_name, status, correct, missing, unexpected, misplaced = row
+    return SetupCheckEvent.model_validate({
+        "eventId": event_id, "checkedAt": _epoch(checked_at), "setupId": setup_id, "setupName": setup_name,
+        "status": status, "correct": _json(correct), "missing": _json(missing),
+        "unexpected": _json(unexpected), "misplaced": _json(misplaced),
+    })
+
+
+def row_to_bucket(row: Any) -> ReadinessBucket:
+    bucket, total, complete = row
+    return ReadinessBucket.model_validate({"bucketStart": _epoch(bucket), "total": total, "complete": complete})
+
+
+def rows_to_summary(setup_id: str, totals: Any, bucket_rows: list) -> tuple[ReadinessSummary | None, list[str]]:
+    """Validated summary from the totals row and time_bucket rows. Invalid rows are reported, not trusted."""
+    errors: list[str] = []
+    buckets = []
+    for row in bucket_rows:
+        try:
+            buckets.append(row_to_bucket(row))
+        except Exception as exc:
+            errors.append(_row_error(("bucket",), exc))
+    try:
+        total, complete, latest = totals
+        summary = ReadinessSummary.from_counts(setup_id, total, complete, _epoch(latest), tuple(buckets))
+    except Exception as exc:
+        errors.append(_row_error(("summary",), exc))
+        summary = None
+    return summary, errors
+
+
+class TigerCheckHistoryRepository:
+    """Append-only Setup Check history in the teachback_setup_checks hypertable.
+
+    Only the HistoryWriter thread calls record/refresh. recent/summary read validated caches.
+    """
+
+    provider = "tiger"
+
+    def __init__(self, url: str, connect: Callable[[str, int], Any] | None = None,
+                 connect_timeout: int = 5, statement_timeout_ms: int = 5000) -> None:
+        self._url = url
+        self._connect = connect or connect_tiger
+        self._connect_timeout = connect_timeout
+        self._statement_timeout_ms = statement_timeout_ms
+        self._lock = threading.Lock()  # guards caches and status only; never held during I/O
+        self._recent: dict[str, tuple[SetupCheckEvent, ...]] = {}
+        self._summary: dict[str, ReadinessSummary] = {}
+        self.errors: list[str] = []
+        self._status = HistoryStatus(provider="tiger", state="error", message="History has not been loaded yet.")
+
+    def __repr__(self) -> str:
+        return "TigerCheckHistoryRepository(<connection details hidden>)"
+
+    def _open(self):
+        return self._connect(self._url, self._connect_timeout)
+
+    def refresh(self, setup_id: str | None = None) -> None:
+        """setup_id None: verify the hypertable (startup/retry). Otherwise reload that setup's caches."""
+        try:
+            with self._open() as conn, conn.cursor() as cur:
+                cur.execute(SET_STATEMENT_TIMEOUT_SQL, (str(self._statement_timeout_ms),))
+                if setup_id is None:
+                    cur.execute(HYPERTABLE_SQL, (CHECK_TABLE,))
+                    if cur.fetchone()[0] != 1:
+                        self._set_status("error", "History table is missing or not a hypertable. "
+                                                  "Run npm run tiger:check.")
+                        return
+                    self._set_status("ready", "History: Tiger Data hypertable ready.")
+                    return
+                cur.execute(RECENT_CHECKS_SQL, (setup_id, RECENT_LIMIT))
+                recent_rows = cur.fetchall()
+                cur.execute(SUMMARY_TOTALS_SQL, ("complete", setup_id))
+                totals = cur.fetchone()
+                cur.execute(SUMMARY_BUCKETS_SQL, (timedelta(hours=BUCKET_HOURS), "complete", setup_id,
+                                                  timedelta(hours=SUMMARY_WINDOW_HOURS)))
+                bucket_rows = cur.fetchall()
+        except Exception as exc:
+            self._fail("load history", exc)
+            return
+        errors: list[str] = []
+        recent = []
+        for row in recent_rows:
+            try:
+                recent.append(row_to_event(row))
+            except Exception as exc:  # malformed rows are skipped and reported, never shown as history
+                errors.append(_row_error(row, exc))
+        summary, summary_errors = rows_to_summary(setup_id, totals, bucket_rows)
+        with self._lock:
+            self._recent[setup_id] = tuple(recent)
+            if summary is not None:
+                self._summary[setup_id] = summary
+            else:
+                self._summary.pop(setup_id, None)
+            self.errors = errors + summary_errors
+        self._set_status("ready", "History: Tiger Data hypertable ready.")
+
+    def record(self, event: SetupCheckEvent) -> bool:
+        """Append one event. True once Tiger confirms it (inserted now, or already stored by a retry)."""
+        try:
+            with self._open() as conn, conn.cursor() as cur:
+                cur.execute(SET_STATEMENT_TIMEOUT_SQL, (str(self._statement_timeout_ms),))
+                cur.execute(INSERT_CHECK_SQL, event_params(event))
+                cur.fetchone()  # None means ON CONFLICT: this event_id was already recorded
+        except Exception as exc:
+            if _is_rejection(exc):
+                raise HistoryWriteError(f"Tiger Data rejected the check event ({type(exc).__name__}).") from None
+            self._fail("record history", exc)
+            raise HistoryWriteError(f"History not saved: Tiger Data unavailable ({type(exc).__name__}).") from None
+        return True
+
+    def recent(self, setup_id: str, limit: int = RECENT_LIMIT) -> list[SetupCheckEvent]:
+        with self._lock:
+            return list(self._recent.get(setup_id, ()))[:limit]
+
+    def summary(self, setup_id: str) -> ReadinessSummary | None:
+        with self._lock:
+            return self._summary.get(setup_id)
+
+    def status(self) -> HistoryStatus:
+        with self._lock:
+            return self._status
+
+    def close(self) -> None:
+        pass  # one short-lived connection per operation; nothing to release
+
+    def _set_status(self, state: str, message: str) -> None:
+        with self._lock:
+            self._status = HistoryStatus(provider="tiger", state=state, message=message[:200])
+
+    def _fail(self, action: str, exc: Exception) -> None:
+        hint = " Run npm run tiger:check." if isinstance(exc, psycopg.errors.UndefinedTable) else ""
+        message = f"History unavailable: could not {action} ({type(exc).__name__}).{hint}"
+        log.warning(message)  # class name only: psycopg messages may include host or user
+        self._set_status("error", message)
