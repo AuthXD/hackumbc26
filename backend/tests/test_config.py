@@ -18,6 +18,6 @@ def test_invalid_semantic_max_dim_is_rejected(value):
         Settings(semantic_max_dim=value)
 
 
-def test_default_semantic_max_dim_is_safe_640(monkeypatch):
+def test_default_semantic_max_dim_is_448_after_size_sweep(monkeypatch):
     monkeypatch.delenv("TEACHBACK_SEMANTIC_MAX_DIM", raising=False)
-    assert Settings().semantic_max_dim == 640
+    assert Settings().semantic_max_dim == 448

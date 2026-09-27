@@ -1,0 +1,1285 @@
+{
+  "recorded_at": "2026-09-27T06:28:00.911333+00:00",
+  "labels": [
+    "blue water bottle",
+    "brown wallet",
+    "green smartwatch",
+    "blue smartphone"
+  ],
+  "warm_trials": 5,
+  "images": [
+    "C:\\Users\\Komal Tummala\\Downloads\\IMG20260926163419.jpg",
+    "C:\\Users\\Komal Tummala\\Downloads\\IMG20260926163438.jpg",
+    "C:\\Users\\Komal Tummala\\Downloads\\IMG20260926163455.jpg"
+  ],
+  "sizes": [
+    {
+      "max_edge": 448,
+      "requests": [
+        {
+          "trial": 0,
+          "scene_id": "layout-a",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            448,
+            204
+          ],
+          "round_trip_s": 1.531,
+          "inference_s": 1.5257606860000124,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 0,
+          "scene_id": "layout-b",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            448,
+            204
+          ],
+          "round_trip_s": 0.852,
+          "inference_s": 0.8503854329999285,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 0,
+          "scene_id": "layout-c",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            448,
+            204
+          ],
+          "round_trip_s": 0.874,
+          "inference_s": 0.871700727000075,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 1,
+          "scene_id": "layout-a",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            448,
+            204
+          ],
+          "round_trip_s": 0.886,
+          "inference_s": 0.8839171590000205,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 1,
+          "scene_id": "layout-b",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            448,
+            204
+          ],
+          "round_trip_s": 0.806,
+          "inference_s": 0.804184824999993,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 1,
+          "scene_id": "layout-c",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            448,
+            204
+          ],
+          "round_trip_s": 0.855,
+          "inference_s": 0.8534543660000509,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 2,
+          "scene_id": "layout-a",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            448,
+            204
+          ],
+          "round_trip_s": 0.92,
+          "inference_s": 0.91810496100004,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 2,
+          "scene_id": "layout-b",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            448,
+            204
+          ],
+          "round_trip_s": 0.866,
+          "inference_s": 0.8627339680000432,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 2,
+          "scene_id": "layout-c",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            448,
+            204
+          ],
+          "round_trip_s": 0.859,
+          "inference_s": 0.8572059450000324,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 3,
+          "scene_id": "layout-a",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            448,
+            204
+          ],
+          "round_trip_s": 0.877,
+          "inference_s": 0.8746598220000124,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 3,
+          "scene_id": "layout-b",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            448,
+            204
+          ],
+          "round_trip_s": 0.815,
+          "inference_s": 0.812688933000004,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 3,
+          "scene_id": "layout-c",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            448,
+            204
+          ],
+          "round_trip_s": 0.928,
+          "inference_s": 0.9257535670000152,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 4,
+          "scene_id": "layout-a",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            448,
+            204
+          ],
+          "round_trip_s": 0.967,
+          "inference_s": 0.9650041290000217,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 4,
+          "scene_id": "layout-b",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            448,
+            204
+          ],
+          "round_trip_s": 0.87,
+          "inference_s": 0.8683564969999225,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 4,
+          "scene_id": "layout-c",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            448,
+            204
+          ],
+          "round_trip_s": 0.983,
+          "inference_s": 0.9806280059999608,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        }
+      ],
+      "timeouts": 0,
+      "invalid": 0,
+      "error": null,
+      "cold_start_s": 14.598,
+      "warm_latencies_s": [
+        1.531,
+        0.852,
+        0.874,
+        0.886,
+        0.806,
+        0.855,
+        0.92,
+        0.866,
+        0.859,
+        0.877,
+        0.815,
+        0.928,
+        0.967,
+        0.87,
+        0.983
+      ],
+      "warm_n": 15,
+      "warm_median_s": 0.874,
+      "preserved": true,
+      "missed_any": [],
+      "extra_any": []
+    },
+    {
+      "max_edge": 512,
+      "requests": [
+        {
+          "trial": 0,
+          "scene_id": "layout-a",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            512,
+            233
+          ],
+          "round_trip_s": 1.543,
+          "inference_s": 1.5413599739999881,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 0,
+          "scene_id": "layout-b",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            512,
+            233
+          ],
+          "round_trip_s": 1.036,
+          "inference_s": 1.0331424120000747,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 0,
+          "scene_id": "layout-c",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            512,
+            233
+          ],
+          "round_trip_s": 1.154,
+          "inference_s": 1.1517632569999705,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 1,
+          "scene_id": "layout-a",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            512,
+            233
+          ],
+          "round_trip_s": 1.162,
+          "inference_s": 1.159519975999956,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 1,
+          "scene_id": "layout-b",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            512,
+            233
+          ],
+          "round_trip_s": 1.011,
+          "inference_s": 1.0079235489999974,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 1,
+          "scene_id": "layout-c",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            512,
+            233
+          ],
+          "round_trip_s": 1.17,
+          "inference_s": 1.1683676459999788,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 2,
+          "scene_id": "layout-a",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            512,
+            233
+          ],
+          "round_trip_s": 1.08,
+          "inference_s": 1.078254161000018,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 2,
+          "scene_id": "layout-b",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            512,
+            233
+          ],
+          "round_trip_s": 1.012,
+          "inference_s": 1.009778861999962,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 2,
+          "scene_id": "layout-c",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            512,
+            233
+          ],
+          "round_trip_s": 1.267,
+          "inference_s": 1.265404224000008,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 3,
+          "scene_id": "layout-a",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            512,
+            233
+          ],
+          "round_trip_s": 1.127,
+          "inference_s": 1.1251203929999747,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 3,
+          "scene_id": "layout-b",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            512,
+            233
+          ],
+          "round_trip_s": 1.013,
+          "inference_s": 1.0111356810000416,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 3,
+          "scene_id": "layout-c",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            512,
+            233
+          ],
+          "round_trip_s": 1.162,
+          "inference_s": 1.159759286999929,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 4,
+          "scene_id": "layout-a",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            512,
+            233
+          ],
+          "round_trip_s": 1.123,
+          "inference_s": 1.1208782749999955,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 4,
+          "scene_id": "layout-b",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            512,
+            233
+          ],
+          "round_trip_s": 0.947,
+          "inference_s": 0.9452280450000217,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 4,
+          "scene_id": "layout-c",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            512,
+            233
+          ],
+          "round_trip_s": 1.128,
+          "inference_s": 1.1254854770000975,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        }
+      ],
+      "timeouts": 0,
+      "invalid": 0,
+      "error": null,
+      "cold_start_s": 12.034,
+      "warm_latencies_s": [
+        1.543,
+        1.036,
+        1.154,
+        1.162,
+        1.011,
+        1.17,
+        1.08,
+        1.012,
+        1.267,
+        1.127,
+        1.013,
+        1.162,
+        1.123,
+        0.947,
+        1.128
+      ],
+      "warm_n": 15,
+      "warm_median_s": 1.127,
+      "preserved": true,
+      "missed_any": [],
+      "extra_any": []
+    },
+    {
+      "max_edge": 640,
+      "requests": [
+        {
+          "trial": 0,
+          "scene_id": "layout-a",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            640,
+            291
+          ],
+          "round_trip_s": 1.57,
+          "inference_s": 1.567865903999973,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 0,
+          "scene_id": "layout-b",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            640,
+            291
+          ],
+          "round_trip_s": 1.31,
+          "inference_s": 1.3079908240000577,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 0,
+          "scene_id": "layout-c",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            640,
+            291
+          ],
+          "round_trip_s": 1.292,
+          "inference_s": 1.2903646460000573,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 1,
+          "scene_id": "layout-a",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            640,
+            291
+          ],
+          "round_trip_s": 1.263,
+          "inference_s": 1.2604684909999833,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 1,
+          "scene_id": "layout-b",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            640,
+            291
+          ],
+          "round_trip_s": 1.275,
+          "inference_s": 1.2727311690000533,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 1,
+          "scene_id": "layout-c",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            640,
+            291
+          ],
+          "round_trip_s": 1.191,
+          "inference_s": 1.1877805389999594,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 2,
+          "scene_id": "layout-a",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            640,
+            291
+          ],
+          "round_trip_s": 1.211,
+          "inference_s": 1.2093806100000393,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 2,
+          "scene_id": "layout-b",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            640,
+            291
+          ],
+          "round_trip_s": 1.267,
+          "inference_s": 1.2652785920000724,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 2,
+          "scene_id": "layout-c",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            640,
+            291
+          ],
+          "round_trip_s": 1.243,
+          "inference_s": 1.2406846229999928,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 3,
+          "scene_id": "layout-a",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            640,
+            291
+          ],
+          "round_trip_s": 1.226,
+          "inference_s": 1.223794818999977,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 3,
+          "scene_id": "layout-b",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            640,
+            291
+          ],
+          "round_trip_s": 1.31,
+          "inference_s": 1.3080384899999444,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 3,
+          "scene_id": "layout-c",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            640,
+            291
+          ],
+          "round_trip_s": 1.292,
+          "inference_s": 1.2895709489999945,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 4,
+          "scene_id": "layout-a",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            640,
+            291
+          ],
+          "round_trip_s": 1.273,
+          "inference_s": 1.270926040000063,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 4,
+          "scene_id": "layout-b",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            640,
+            291
+          ],
+          "round_trip_s": 1.258,
+          "inference_s": 1.2564780810000684,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        },
+        {
+          "trial": 4,
+          "scene_id": "layout-c",
+          "status": "ok",
+          "requested": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "effective_size": [
+            640,
+            291
+          ],
+          "round_trip_s": 1.243,
+          "inference_s": 1.241160832000105,
+          "detected": [
+            "blue water bottle",
+            "brown wallet",
+            "green smartwatch",
+            "blue smartphone"
+          ],
+          "missed": [],
+          "extra": [],
+          "confidence": null
+        }
+      ],
+      "timeouts": 0,
+      "invalid": 0,
+      "error": null,
+      "cold_start_s": 6.904,
+      "warm_latencies_s": [
+        1.57,
+        1.31,
+        1.292,
+        1.263,
+        1.275,
+        1.191,
+        1.211,
+        1.267,
+        1.243,
+        1.226,
+        1.31,
+        1.292,
+        1.273,
+        1.258,
+        1.243
+      ],
+      "warm_n": 15,
+      "warm_median_s": 1.267,
+      "preserved": true,
+      "missed_any": [],
+      "extra_any": []
+    }
+  ],
+  "blocker": null,
+  "gpu_peak_mib": 6220.0,
+  "gpu_sampling_error": null,
+  "chosen_max_edge": 448,
+  "chosen_reason": "448 is the smallest size that detected every requested label on all 3 images (15 warm trials, median 0.874 s)."
+}

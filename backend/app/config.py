@@ -136,7 +136,7 @@ SEMANTIC_MAX_DIM_RANGE = (224, 1280)  # below: objects vanish; above: slower tha
 
 
 def _semantic_max_dim() -> int | str:
-    return os.getenv("TEACHBACK_SEMANTIC_MAX_DIM", "").strip() or 640
+    return os.getenv("TEACHBACK_SEMANTIC_MAX_DIM", "").strip() or 448
 
 
 def validate_semantic_max_dim(value: object) -> int:
@@ -156,8 +156,8 @@ class Settings:
     stability: StabilityConfig = field(default_factory=StabilityConfig)
     procedure: ProcedureConfig = field(default_factory=ProcedureConfig)
     mat: MatConfig = field(default_factory=MatConfig)
-    # Longest edge of the image sent to LocateAnything (the canonical mat when tracking). Measured in
-    # benchmarks/locate_anything/evidence/size-sweep.md.
+    # Longest edge of the image sent to LocateAnything (the canonical mat when tracking).
+    # 448 kept every demo object on the size-sweep photos; see evidence/size-sweep.md.
     semantic_max_dim: int = field(default_factory=_semantic_max_dim)
     semantic_beta: bool = field(default_factory=lambda: os.getenv("TEACHBACK_SEMANTIC_BETA") == "1")
     locate_distro: str = field(default_factory=lambda: os.getenv("LOCATE_WSL_DISTRO", "Ubuntu"))

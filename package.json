@@ -14,7 +14,9 @@
     "dev:api:reload": "node scripts/py.mjs -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload",
     "stop": "node scripts/stop.mjs",
     "demo:check": "node scripts/py.mjs demo_check.py",
-    "tiger:check": "node scripts/py.mjs tiger_check.py"
+    "tiger:check": "node scripts/py.mjs tiger_check.py",
+    "mat:check": "node scripts/py.mjs mat_check.py",
+    "semantic:sizes": "node scripts/py.mjs ../benchmarks/locate_anything/size_sweep.py"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"

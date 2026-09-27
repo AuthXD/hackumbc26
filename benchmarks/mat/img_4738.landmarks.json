@@ -1,0 +1,32 @@
+{
+  "source": "IMG_4738.jpg",
+  "image_width": 2160,
+  "image_height": 3840,
+  "note": "Measured sticker centres on the local photo IMG_4738.jpg. Click order is clockwise on screen.",
+  "order": [
+    {
+      "id": "TL",
+      "name": "purple creature",
+      "x": 505.8,
+      "y": 399.2
+    },
+    {
+      "id": "TR",
+      "name": "frog",
+      "x": 1605.6,
+      "y": 435.8
+    },
+    {
+      "id": "BR",
+      "name": "potion bottle",
+      "x": 1743.4,
+      "y": 3378.9
+    },
+    {
+      "id": "BL",
+      "name": "SteelSeries logo",
+      "x": 513.5,
+      "y": 3436.8
+    }
+  ]
+}
