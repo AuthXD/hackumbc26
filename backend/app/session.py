@@ -303,6 +303,8 @@ class Session:
     def detector_status(self):
         return {"kind": self.detector_kind, "betaEnabled": self.cfg.semantic_beta,
                 "labels": list(self.semantic_labels), "workerState": self.semantic_detector.worker.state,
+                "model": {"name": "LocateAnything Q6_K", "runtime": "Local WSL/CUDA",
+                          "maxDim": self.cfg.semantic_max_dim},
                 "scanState": self.scan_status, "message": self.scan_message,
                 "canScan": self.detector_kind == "semantic" and self._can_scan() and self._worker_state() == "ready",
                 "workerMessage": getattr(getattr(self.semantic_detector, "worker", None), "public_message", "") or "",

@@ -10,7 +10,7 @@ Do this before judges are in front of the table.
 1. Stabilize or mount the phone so the whole mat stays in frame.
 2. Keep all four mat landmarks visible: purple creature, frog, potion bottle, SteelSeries logo.
 3. From the repo: `npm run dev`. Open http://localhost:5173 on the laptop.
-4. Select **Semantic Objects**. Wait until the label says **Model ready**. If it stays on **Loading model**, do
+4. Select **Semantic Objects**. Wait until the label says **Local model ready**. If it stays on **Loading local model**, do
    not start the demo. If it says **Model error**, press **Retry model** once. If it still fails, use Color mode.
 5. Start a trusted HTTPS tunnel to the frontend, for example `cloudflared tunnel --url http://localhost:5173`.
 6. Paste that HTTPS address into **Connect phone**, or set `TEACHBACK_PHONE_URL` in `.env` and restart.

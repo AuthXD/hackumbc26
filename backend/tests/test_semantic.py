@@ -376,6 +376,9 @@ def test_selecting_semantic_preloads_without_blocking_the_session():
         snap = s.configure_detector("semantic", ",".join(LABELS))
         assert _time.monotonic() - t0 < 0.45
         assert snap["detector"]["kind"] == "semantic"
+        assert snap["detector"]["model"] == {
+            "name": "LocateAnything Q6_K", "runtime": "Local WSL/CUDA", "maxDim": 448,
+        }
         assert snap["detector"]["workerState"] == "loading"
         assert snap["detector"]["canScan"] is False
         worker.preload()

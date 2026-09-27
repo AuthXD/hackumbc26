@@ -286,13 +286,18 @@ export default function App() {
               <button className={semantic ? "on" : ""}
                 disabled={!detector?.betaEnabled || detector.switchLocked || source === "sim"}
                 onClick={() => send({ type: "detector", kind: "semantic", labels: objectDescriptions })}>
-                Semantic Objects <span className="beta-badge">Beta</span>
+                Semantic Objects <span className="beta-badge">Local LocateAnything</span>
               </button>
             </div>
-            {semantic && <span className="pill">{WORKER_LABEL[detector?.workerState ?? "unloaded"]}</span>}
+            {semantic && <span className={`pill model-${detector?.workerState ?? "unloaded"}`}>
+              {WORKER_LABEL[detector?.workerState ?? "unloaded"]}
+            </span>}
             {semantic && mode !== "idle" && <button className="ghost" onClick={() => command("pause")}>Pause procedure</button>}
           </div>
           {semantic && <>
+            {detector?.model && <p className="local-model-note">
+              {detector.model.name} · {detector.model.runtime} · {detector.model.maxDim}px input
+            </p>}
             <label className="object-input">Object descriptions
               <input value={objectDescriptions} maxLength={485}
                 disabled={mode !== "idle" || u?.procedure?.detectorKind === "semantic"}

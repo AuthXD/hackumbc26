@@ -125,12 +125,13 @@ The four-color path remains the default. To enable manual recognition of ordinar
 Selecting that mode starts the worker in the background. The rest of the app stays usable. The status is plain
 text:
 
-- **Model not loaded**
-- **Loading model**
-- **Model ready**
-- **Model error**
+- **Local model not loaded**
+- **Loading local model**
+- **Local model ready**
+- **Local model error**
 
-Ready means the worker sent its ready message and then answered a probe. Starting the process is not enough.
+The panel also reports `LocateAnything Q6_K`, `Local WSL/CUDA`, and the configured input size. Ready means the
+worker sent its ready message and then answered a probe. Starting the process is not enough.
 **Scan Objects** stays disabled until Ready. Choosing Semantic Objects again while a load is in progress reuses
 that one worker; it does not start a second one. After Ready, later selections reuse the same process.
 

@@ -201,18 +201,19 @@ describe("status card with mat problems", () => {
 describe("semantic model readiness labels", () => {
   it("uses plain loading and ready text, never raw worker tokens", () => {
     expect(WORKER_LABEL).toEqual({
-      unloaded: "Model not loaded", loading: "Loading model", ready: "Model ready", error: "Model error",
+      unloaded: "Local model not loaded", loading: "Loading local model", ready: "Local model ready",
+      error: "Local model error",
     });
     const base: ServerUpdate = {
       type: "update", mode: "idle",
       detector: { kind: "semantic", betaEnabled: true, labels: ["a", "b"], workerState: "loading", scanState: "idle",
         message: "", canScan: false, switchLocked: false, procedureKind: null },
     };
-    expect(statusView(base).headline).toBe("Loading model");
+    expect(statusView(base).headline).toBe("Loading local model");
     expect(statusView({ ...base, detector: { ...base.detector!, workerState: "ready" } }).headline).toBe("Scan the settled table");
     const broken = statusView({ ...base, detector: { ...base.detector!, workerState: "error",
       workerMessage: "The object detector is unavailable. Try again, or use Color mode." } });
-    expect(broken.headline).toBe("Model error");
+    expect(broken.headline).toBe("Local model error");
     expect(broken.fix).toMatch(/Retry loading/);
     expect(broken.observed).toContain("unavailable");
   });

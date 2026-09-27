@@ -2,10 +2,10 @@ import type { MatDisplay } from "./MatView";
 import type { DetectorState, ServerUpdate } from "./types";
 
 export const WORKER_LABEL: Record<DetectorState["workerState"], string> = {
-  unloaded: "Model not loaded",
-  loading: "Loading model",
-  ready: "Model ready",
-  error: "Model error",
+  unloaded: "Local model not loaded",
+  loading: "Loading local model",
+  ready: "Local model ready",
+  error: "Local model error",
 };
 
 export type Tone = "neutral" | "success" | "warning" | "error";
@@ -114,7 +114,7 @@ function procedureView(u: ServerUpdate | null): View {
     const broken = d.workerState === "error";
     return {
       tone: broken || d.scanState === "error" ? "error" : "warning",
-      eyebrow: "Semantic Objects · Beta · Waiting",
+      eyebrow: "Local LocateAnything · Waiting",
       headline: loading ? WORKER_LABEL[d.workerState]
         : broken ? WORKER_LABEL.error
         : d.scanState === "scanning" ? "Scanning objects…"

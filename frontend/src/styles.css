@@ -119,6 +119,10 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
 .object-input input { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); font: inherit; }
 .semantic-error { color: var(--error); margin: 0; }
 .semantic-controls .hint { margin: 0; }
+.local-model-note { margin: 0; color: #c4b5fd; font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
+.pill.model-ready { color: var(--success); border-color: color-mix(in srgb, var(--success) 45%, transparent); }
+.pill.model-loading { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
+.pill.model-error { color: var(--error); border-color: color-mix(in srgb, var(--error) 45%, transparent); }
 
 /* ---------- stage ---------- */
 .stage { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(340px, 0.85fr); gap: 16px; align-items: stretch; }
