@@ -121,12 +121,14 @@ Key decisions:
       Chrome with the real objects and calibrate colors.
 
 ## Current commands
-`npm run setup` · `npm run dev` · `npm test` · `npm run demo:check` · `npm run typecheck` · `npm run stop`
+`npm run setup` · `npm run dev` · `npm test` · `npm run typecheck` · `npm run build` · `npm run demo:check` ·
+`npm run mat:check` · `npm run semantic:sizes` · `npm run tiger:check` · `npm run stop`
 
-## Next tasks
-1. Real-webcam rehearsal with the physical objects under venue lighting; tune `motion_threshold` / calibrate.
-2. Add `GEMINI_API_KEY` / `ELEVENLABS_API_KEY` to `.env` and confirm AI step titles + voice live.
-3. Optional: HTTPS dev server for the iPhone camera path.
+## Still open
+1. Physical iPhone and OnePlus end-to-end under venue lighting, including mat tracking with the real stickers.
+2. A live Gemini wording call and a live ElevenLabs call. A previous ElevenLabs key returned 401; fallback is
+   implemented and tested with mocks, not claimed as a working live voice.
+3. **Retry model** against a crashed GPU. Automated tests cover the error and retry path.
 
 ### Semantic Objects constrained beta (2026-09-26)
 - The full OnePlus 12 / black-mat benchmark covered 12 descriptions across three layouts: separated 10/12,
@@ -270,3 +272,60 @@ Key decisions:
   `tiger/ready`, the panel showed "History: Tiger Data", and 0 credential fragments appeared in health or logs.
 - Not yet exercised live: a full camera-driven Setup Check writing a *committed* history row (needs the
   webcam + semantic model), and the readiness/recent lists rendered with real data in the browser.
+
+### Mat, semantic readiness, and docs (2026-09-27)
+
+Completed commits, not pushed:
+
+- `5703ae9` laptop mat calibration and stabilized view
+- `543ddf8` semantic worker preload and real readiness
+- `ab6855f` semantic size sweep and offline `mat:check`
+
+Mat clicks are TL purple creature, TR frog, BR potion bottle, BL SteelSeries logo. The session warps to a
+canonical view and masks the outer 10%. Tracking loss, excess motion, a stale transform, or a camera change
+blocks a verdict. The phone owns the camera only after its first valid frame. The UI separates connected without
+video, streaming, and camera error.
+
+Semantic mode preloads LocateAnything in the background. Ready requires the worker ready message plus a probe.
+Color mode stays usable if the load fails. Repeated selections share one load. Scans stay disabled until Ready.
+The configured maximum dimension is 448.
+
+Size sweep (`benchmarks/locate_anything/evidence/size-sweep.md`), 5 warm trials × 3 images = 15 warm inferences
+per size. Confidence is null.
+
+| Size | Cold start s | Warm median s | All 4 labels |
+|---:|---:|---:|---|
+| 448 | 14.598 | 0.874 | yes |
+| 512 | 12.034 | 1.127 | yes |
+| 640 | 6.904 | 1.267 | yes |
+
+448 was selected because it preserved the four requested labels (blue water bottle, brown wallet, green
+smartwatch, blue smartphone) on all three photos, with the warm median above. The cold-start column is one run's
+timing. It is not evidence that a larger image loads the model faster. Caches can move those numbers.
+
+`npm run mat:check` writes `benchmarks/mat/results/annotated-source.png`, `canonical.png`,
+`canonical-band.png`, and `mat-check.json`.
+
+Limits that stay true: ground-truth boxes on the sweep are approximate (label presence, not IoU); GPU memory is
+device-wide; Retry model is tested in automation, not by killing a live GPU; no physical iPhone or OnePlus
+end-to-end claim.
+
+Documentation-pass verification (isolated ports, temporary data directories, not the user's :8000/:5173 servers):
+
+- `npm test`: 225 pytest passed, 15 Vitest passed
+- `npm run typecheck` and `npm run build`: passed
+- `npm run mat:check`: passed. Artifacts under `benchmarks/mat/results/`
+- `npm run demo:check` against `ws://127.0.0.1:8022/ws`: 3/3 (skipped step, wrong object, wrong zone), each recovered
+- `npm run tiger:check`: passed with TLS, migrations re-applied, setup and history probes rolled back, no probe rows left
+- Size sweep rerun written outside the repo so `evidence/size-sweep.json` stays the recorded run. Recheck also kept
+  all four labels at 448, 512, and 640 (15 warm inferences each). Warm medians were 0.838 / 1.043 / 1.185 s. Cold
+  starts were 14.128 / 6.637 / 6.024 s, which is not the same order as the recorded run. That is why cold start is
+  not used to compare sizes. 448 remains the choice.
+
+Browser, isolated servers only: simulator Color mode showed red, yellow, green, and blue in Zone A. Semantic
+selection showed Loading model with Scan Objects disabled, then Model ready. Selecting it again after Color stayed
+on Model ready. A worker pointed at a missing WSL distro showed Model error, Retry model, and Color still
+selectable, with no stack trace. Mat calibration offered the four sticker steps. A simulated phone was connected
+without video, then streaming after its first valid frame. After calibration the track became trustworthy with no
+scene verdict; a blank frame cleared the scene and did not leave a passing result. Setup Check showed Capture and
+Check without a stale complete verdict. No Vite error overlay.

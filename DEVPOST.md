@@ -12,7 +12,7 @@ that then watches the next person like a patient expert would.
 
 ## What it does
 
-TeachBack watches a tabletop through a webcam.
+TeachBack watches a tabletop through a laptop webcam, a phone browser, or a built-in simulator.
 
 - **Teach**: an expert performs a short procedure once, for example "red block to Zone B, stack yellow on blue,
   green to Zone C, red back to A." TeachBack learns each step as a *state change* (which object moved, where it
@@ -27,25 +27,27 @@ The procedure isn't hardcoded. A judge can invent any four-step sequence on the 
 
 ## How we built it
 
-- **Frontend**: React + TypeScript + Vite. The webcam is captured with `getUserMedia` and streamed as JPEG over a
-  WebSocket at about 5 fps with one frame in flight, so there is never a backlog. A canvas overlay draws the zones
-  and labeled detections. The UI has a large status card (Expected / Observed / Fix) readable from across a room.
+- **Frontend**: React + TypeScript + Vite. The camera is captured with `getUserMedia` and streamed as JPEG over a
+  WebSocket at about 5 fps with one frame in flight. A phone page can own the camera only after its first valid
+  frame. A canvas overlay draws zones and labels. The status card shows Expected / Observed / Fix.
+- **Mat**: four sticker clicks (purple creature, frog, potion, SteelSeries logo) are perspective-warped to a
+  canonical top-down view. The outer 10% sticker band is excluded. Tracking fails closed.
 - **Backend**: Python, FastAPI, OpenCV, and NumPy.
   - HSV color segmentation finds one object per color. Its center maps to a zone. Stacking is inferred from
     bounding-box overlap (overhead camera) or edge contact (angled camera).
-  - A stability filter commits a state only when every object is visible, the frame is still (pixel-change motion
-    gate), and the arrangement has held for 700 ms.
-  - A deterministic sequence engine compares each committed state with the learned step's postconditions and
-    classifies errors by matching unexpected changes against later steps.
-- **Gemini**: after a step is learned, Gemini gets the structured StepDelta JSON plus the before and after keyframes
-  and returns strict JSON (`{title, instruction}`) to name the step naturally. We validate the response, cache it
-  per step, and fall back to deterministic wording.
-- **ElevenLabs**: spoken coaching for step completions and actionable errors, through a small server-side proxy that
-  keeps the key off the client. It falls back to browser speech synthesis.
-- **Testing**: 68 pytest tests, including 25 randomized "judge-invented" procedures and full end-to-end runs through
-  real JPEG frames with a simulated hand. A live `demo:check` script replays the judging demo three times against the
-  running server with three different mistakes. A built-in **simulator** renders a draggable virtual tabletop through
-  the identical vision pipeline, for testing and as a camera-failure fallback.
+  - Optional Semantic Objects loads a local LocateAnything model in the background and scans only after a
+    readiness probe. The measured input size is 448 px. The model does not return confidence scores.
+  - A stability filter commits a state only when every object is visible, the frame is still, and the arrangement
+    has held for 700 ms.
+  - A deterministic sequence engine compares each committed state with the learned step's postconditions.
+- **Gemini** (optional): after a color step is learned, Gemini may word the step from the StepDelta plus keyframes.
+  The response is validated. If the key is missing or the call fails, the deterministic sentence stays. Pass/fail
+  never uses Gemini. A successful live call is not part of this write-up.
+- **ElevenLabs** (optional): a server-side proxy can speak coaching. HTTP 401 or any other failure returns 503, and
+  the browser uses `speechSynthesis`. A previous key returned 401, so live ElevenLabs is not claimed here.
+- **Testing**: pytest plus frontend Vitest, including randomized procedures, synthetic frames, mat geometry,
+  semantic worker readiness, and Setup Check. `npm run demo:check` replays three color demos. `npm run mat:check`
+  checks the landmark warp offline. The simulator is the camera-failure fallback for color mode.
 
 ## Challenges we ran into
 
@@ -82,7 +84,9 @@ The procedure isn't hardcoded. A judge can invent any four-step sequence on the 
 - Learned object appearance instead of fixed colors: any tools or ingredients, via few-shot embeddings.
 - Richer steps: rotations, open/close states, pouring, timed holds.
 - Multiple procedures, branching steps, and per-learner analytics for trainers.
-- Phone and smart-glasses cameras over HTTPS, and hands-free voice commands.
+- A physical phone pass under venue lighting. The phone page and HTTPS tunnel exist; an iPhone or OnePlus
+  end-to-end run is still open.
+- Hands-free voice commands.
 
 ## Track notes
 
@@ -97,13 +101,11 @@ who completed which procedure correctly as the upsell for compliance-heavy setti
 mistake and TeachBack immediately says out loud what it expected and what it saw. The recovery ("Back on track",
 then "Procedure complete") closes the loop in under a minute. The UI is built to be read from several feet away.
 
-**Gemini.** Gemini gets structured context, not just pictures: the exact StepDelta (which objects changed, before
-and after placements) plus before and after keyframes. It returns schema-constrained JSON (`responseMimeType:
-application/json` with a `responseSchema`) naming the step for a newcomer. We validate the response, reject answers
-that omit a handled object, cache per step, and never let Gemini decide correctness. It's grounded,
-structured-output use of a multimodal model in a safety-conscious role.
+**Gemini.** When a key is configured, Gemini gets the StepDelta (which objects changed, before and after
+placements) plus before and after keyframes. It is asked for schema-constrained JSON naming the step. The response
+is validated, answers that omit a handled object are rejected, and Gemini never decides correctness. Missing key
+or a failed call keeps the deterministic sentence. This text does not claim a live generateContent success.
 
-**ElevenLabs.** Coaching is hands-busy, eyes-on-the-table work, so voice is the natural channel. ElevenLabs speaks
-only meaningful moments: a step completed, an actionable error with its fix, or the procedure finished. It stays
-quiet during ordinary waiting. Calls go through a cached server-side proxy (low-latency flash model), and
-`speechSynthesis` takes over automatically if the service or key is unavailable.
+**ElevenLabs.** Coaching is hands-busy work, so voice is the natural channel. The server proxy is meant to speak
+a completed step, an actionable error, or the finish. `speechSynthesis` takes over when the key is missing or the
+call fails, including the 401 seen from a previous key. Live ElevenLabs audio is not claimed here.

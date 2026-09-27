@@ -1,13 +1,78 @@
 # TeachBack architecture
 
+## Frame path
+
+```
+camera frame
+  → phone or laptop ownership (a valid JPEG earns it; a stale frame is dropped)
+  → mat tracking and validation (simulator bypasses this)
+  → canonical perspective warp
+  → outer 10% sticker band masked
+  → color detector, or a manual semantic scan
+  → zones in that same coordinate system
+  → procedure or Setup Check evaluation
+  → fail-closed verdict
+```
+
+A frame that fails mat validation does not update the scene. Tracking loss, excessive motion, a stale transform,
+or a camera change clears the current scene and marks an old Setup Check result stale. An in-flight semantic scan
+is invalidated, so a late result cannot grade the new view.
+
 ## Phone camera ownership
 
 `GET /api/phone-link` returns either the configured trusted `TEACHBACK_PHONE_URL` or a discovered LAN fallback,
-with an explicit secure flag. `?phone=1` renders a rear-camera-only page. The newest WebSocket client owns frame
-input. The hub forwards that client's JPEG bytes to viewer tabs and sends every tab its own `active` flag; inactive
-laptop tabs stop their local frame pumps and render the relayed phone image under the shared overlay. Disconnecting
-the phone broadcasts ownership again so the laptop resumes automatically. A single async lock serializes JSON and
-binary WebSocket sends.
+with an explicit secure flag. `?phone=1` renders a rear-camera-only page.
+
+Ownership is in `sources.py`. Connecting a phone sets **connected** and does not take the camera. The first valid
+JPEG sets **streaming** and that page becomes the owner. A camera error reported by the page is **error** and does
+not count as streaming. The hub forwards the owner's JPEG to viewer tabs and sends every tab its own `active`
+flag. Inactive laptop tabs stop their local frame pumps. One frame is in flight; there is no frame queue. If the
+phone stops sending or disconnects, the laptop may send again. One async lock serializes JSON and binary sends.
+
+## Mat
+
+Calibration stores four clicks, in order: top-left purple creature, top-right frog, bottom-right potion bottle,
+bottom-left SteelSeries logo. `quad_problem` rejects a bad order or a quadrilateral that is too small, crossed, or
+too skewed. A valid quad is warped to a canonical image whose long side is `canonical_long_side` (960). The outer
+`band_fraction` (0.10) is painted out before detection. Zones A/B/C are laid out inside the remaining area.
+
+The tracker (pyramidal Lucas-Kanade, RANSAC homography, ORB re-acquisition) fails closed. `trustworthy` is false
+while the view is unsteady, lost, or waiting to be recalibrated. The UI asks for `/api/mat-view.jpg` only while
+that view is current, and drops it about two seconds after tracking stops producing a new one.
+
+The simulator sets mat bypass. Uncalibrated camera mode still runs detection on the raw frame and shows raw zones.
+
+## Semantic worker
+
+`LocateAnythingDetector` talks to one persistent worker (`locate_worker.py` → `benchmarks/locate_anything/worker.py`
+under WSL/CUDA when the command is not injected). Selecting Semantic Objects calls `start_preload`. The session
+returns immediately. A later snapshot is broadcast when the load thread finishes.
+
+States are `unloaded`, `loading`, `ready`, and `error`. Ready is set only after the worker's `ready` message and a
+successful `{"type":"probe"}` reply. Concurrent `preload` calls share one process. `predict` reuses that process.
+A timeout or crash sets `error`, terminates the process, and stores a fixed public sentence. Stack traces and
+config values stay out of snapshots.
+
+`LatestScan` runs one inference and holds at most one replacement request. A newer scan, motion, camera shift, or
+mat loss bumps the version so the in-flight result is discarded. Scans are refused until `workerState` is `ready`.
+
+The frame written for inference is `prepare_semantic_frame`, limited to `Settings.semantic_max_dim` (default 448,
+validated in `config.py`). When the mat is tracking, that frame is the masked canonical image. Otherwise it is the
+camera frame. The size sweep that chose 448 is `benchmarks/locate_anything/evidence/size-sweep.md`.
+
+## What clears a previous verdict
+
+- Mat loss, an untrusted track, or a camera / coordinate-system change
+- Motion or a camera shift during a scan
+- A failed or ambiguous scan (procedure or Setup Check)
+- Switching detector or workspace, resetting, or calibrating the mat
+- A table move after a Setup Check (`resultStale`)
+
+Color practice verdicts also clear when the arrangement is no longer the committed stable state. Hands moving or
+an occluded object are waiting states, not errors, and they do not commit.
+
+Color mode after the mat step (or with the simulator, which skips the mat). Semantic scans replace the HSV
+box with one manual LocateAnything call. Speech is the browser when `/api/speak` returns 503.
 
 ```
  Browser (React + Vite)                         Backend (FastAPI, Python 3.12)
@@ -123,6 +188,11 @@ procedure commands are refused and the detector stays semantic.
    only changes the wording in the timeline. ElevenLabs only voices text the engine produced. Both fall back silently.
 6. **Backpressure by design.** The browser sends the next frame only after the previous result arrives. JPEG
    encoding uses synchronous `toDataURL` because Chromium's async `toBlob` was measured at 500–1000 ms.
+
+## Simulator
+
+Simulator frames are JPEGs of a canvas. They use the color detector and skip mat tracking, canonical warp, and
+semantic scans. Semantic mode disables the Simulator control so a synthetic table cannot be graded as real objects.
 
 ## Tests
 

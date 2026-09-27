@@ -38,8 +38,10 @@ Ctrl+C, or run `npm run stop` if a previous run left a port busy.
 ### Use a phone as the camera
 
 Press **Connect phone** on the laptop. TeachBack shows a QR and a phone-only page that requests the rear camera.
-The newest connected page owns the camera, while the laptop keeps the controls and mirrors the phone's live JPEG
-frames with the detection overlay. Closing the phone page returns camera control to the laptop.
+The phone does not take the camera until its first valid JPEG arrives. Until then the button reads **Phone
+connected — no video yet**. After valid frames it reads **Phone streaming**, and a camera failure reads **Phone
+camera error**. The laptop keeps the controls and mirrors the phone's live JPEG frames. A phone that stops sending,
+or disconnects, gives the camera back to the laptop. Stale frames are dropped; they never stay in a queue.
 
 Mobile browsers require a trusted HTTPS origin for live camera access. The automatically discovered LAN URL is
 useful for checking connectivity, but its `http://` QR cannot open the camera on iPhone or normal Android Chrome.
@@ -55,31 +57,111 @@ Using a public tunnel sends camera frames through that tunnel provider. For a fu
 a Windows webcam with Camo or DroidCam and use the normal **Camera** source instead.
 
 No camera handy? Click **Simulator** in the header, or open http://localhost:5173/?sim. You get a synthetic
-tabletop whose pixels go through exactly the same vision pipeline.
+tabletop whose pixels go through the color detector. The simulator skips mat tracking. Semantic Objects stays on
+the camera path; the Simulator button is disabled while that mode is selected.
+
+### Mat calibration
+
+With a real camera (laptop webcam or phone), press **Calibrate mat** and click the four stickers in order:
+
+1. top-left purple creature
+2. top-right frog
+3. bottom-right potion bottle
+4. bottom-left SteelSeries logo
+
+TeachBack checks that those clicks form a usable quadrilateral, then perspective-warps the picture into a fixed
+top-down canonical view. The outer 10% of that view is the sticker band. It is masked out and is not part of
+Zones A, B, and C.
+
+Tracking fails closed. If a landmark is lost, the camera moves too much, the transform goes stale, or the camera
+source changes, TeachBack drops the current scene and will not give a verdict until tracking is trustworthy
+again. The stabilized picture is removed when it is no longer current. The simulator does not use this path.
+
+```bash
+npm run mat:check
+```
+
+That command is offline. It does not start the server, use the database, or call an API. On this machine it
+reads `IMG_4738.jpg` from the default path in `backend/mat_check.py`. Another machine can pass `--image` or set
+`TEACHBACK_MAT_CHECK_IMAGE`. The landmark coordinates are the checked-in fixture
+`benchmarks/mat/img_4738.landmarks.json`. It writes:
+
+- `benchmarks/mat/results/annotated-source.png`
+- `benchmarks/mat/results/canonical.png`
+- `benchmarks/mat/results/canonical-band.png`
+- `benchmarks/mat/results/mat-check.json`
+
+Those generated images are gitignored. The pytest suite uses a synthetic mat, so CI does not need that photo.
 
 ### Optional API keys
 
 Copy `.env.example` to `.env` in the repo root and fill in any keys you have, then restart `npm run dev`.
 
-| Key | What it adds | Without it |
+| Key | What it adds | Without it, or if the call fails |
 |-----|--------------|-----------|
-| `GEMINI_API_KEY` | Gemini words each learned step from the before/after keyframes plus the structured change | Deterministic text, e.g. "Move the red object from Zone A to Zone B." |
-| `ELEVENLABS_API_KEY` | Natural voice for corrections and step completions | Browser `speechSynthesis` |
+| `GEMINI_API_KEY` | Optional wording for a learned step, from the before/after keyframes plus the structured change | Deterministic text, e.g. "Move the red object from Zone A to Zone B." |
+| `ELEVENLABS_API_KEY` | Optional spoken corrections and step completions | Browser `speechSynthesis` |
 
-Neither service ever decides whether a step was correct. That decision is always deterministic.
+Neither service decides whether a step was correct. That decision is always deterministic. A failed Gemini or
+ElevenLabs call, including an HTTP 401 from a rejected key, is treated as unavailable. `/api/speak` returns 503
+and the browser speaks with `speechSynthesis`. This repo does not claim that a live Gemini or ElevenLabs call
+succeeds with the key currently on disk.
+
+### LocateAnything (WSL and CUDA)
+
+Semantic Objects uses a resident LocateAnything Q6_K worker. The web server does not import the model. On Windows
+the worker runs in WSL (`LOCATE_WSL_DISTRO`, default `Ubuntu`) with `LA_DEVICE=CUDA0`. You need:
+
+- the Q6_K GGUF at `LOCATE_MODEL` (default `/home/authxd/models/locate-anything-q6_k.gguf` inside that distro)
+- the shared library from `benchmarks/locate_anything/build_shared.py`, or `LOCATE_LIBRARY`
+
+Color mode does not need any of this.
 
 ### Optional Semantic Objects beta
 
-The original four-color path remains the default and the safest judging demo. To enable manual recognition of
-ordinary objects with the local LocateAnything model, set `TEACHBACK_SEMANTIC_BETA=1` in `.env` and restart the
-server. The UI then offers **Semantic Objects · Beta**.
+The four-color path remains the default. To enable manual recognition of ordinary objects, set
+`TEACHBACK_SEMANTIC_BETA=1` in `.env` and restart. The UI then offers **Semantic Objects · Beta**.
 
-Use 2–6 unique descriptions such as `blue water bottle, brown wallet, green smartwatch, blue smartphone`. Keep
-every object separated and fully visible on the black mat. In Teach or Practice, wait for the table to settle and
-press **Scan Objects** after the starting layout and after every move. The first scan loads the GPU model and can
-take roughly 20 seconds; warm scans take about 2 seconds on the tested RTX 4060 laptop. Stacking is not supported
-in this mode. If a scan fails, pause the procedure before explicitly switching back to Color mode; the learned
-semantic procedure is preserved.
+Selecting that mode starts the worker in the background. The rest of the app stays usable. The status is plain
+text:
+
+- **Model not loaded**
+- **Loading model**
+- **Model ready**
+- **Model error**
+
+Ready means the worker sent its ready message and then answered a probe. Starting the process is not enough.
+**Scan Objects** stays disabled until Ready. Choosing Semantic Objects again while a load is in progress reuses
+that one worker; it does not start a second one. After Ready, later selections reuse the same process.
+
+If loading fails, the card says **Model error** and offers **Retry model**. Color mode still works. The UI does
+not show stack traces or configuration values.
+
+Use 2–6 unique descriptions. The measured demo set is `blue water bottle, brown wallet, green smartwatch, blue
+smartphone`. Keep every object separated and fully visible on the black mat. In Teach or Practice, wait for the
+table to settle and press **Scan Objects** after the starting layout and after every move. Only the latest scan
+is kept. A newer frame or request supersedes an older one. There is no inference queue.
+
+The image sent to the model is the canonical mat when tracking is active, and the camera frame when the mat is
+not calibrated. The longest edge is `TEACHBACK_SEMANTIC_MAX_DIM` (default **448**). Values outside 224–1280, or
+anything that is not a whole number of pixels, are rejected at startup.
+
+On the three evaluation photos, 448 detected all four requested labels on every image. Warm median latency was
+**0.874 s** across **15** warm inferences (5 trials × 3 images). The model API does not return confidence scores.
+Cold start on that run was 14.598 s at 448. Cold starts at 512 (12.034 s) and 640 (6.904 s) are records of those
+process launches, not evidence that a larger image loads the model faster. CUDA, disk, and OS caches can change
+a cold start. 448 was chosen because it kept the detections, not because its cold start was shorter.
+
+```bash
+npm run semantic:sizes
+```
+
+That sweep needs the WSL worker, the model, and the three photos. Override the photo paths with
+`TEACHBACK_SEMANTIC_IMAGE_1`, `TEACHBACK_SEMANTIC_IMAGE_2`, and `TEACHBACK_SEMANTIC_IMAGE_3`. Results are written
+to `benchmarks/locate_anything/evidence/size-sweep.json` and `size-sweep.md`.
+
+Stacking is not supported in this mode. If a scan fails, pause the procedure before switching back to Color; the
+learned semantic procedure is preserved.
 
 ### Setup Check mode (needs the Semantic Objects beta)
 
@@ -188,50 +270,45 @@ highlighted (red → yellow → green → blue). Each click re-centers that colo
 The calibration is saved to `backend/data/calibration.json`. **Reset colors** restores the defaults. The thresholds
 themselves live in `backend/app/config.py`.
 
-## Verifying
+## Commands
 
-```bash
-npm test
-```
-
-This runs 145 backend tests: the sequence engine, vision on synthetic JPEG frames, the stability filter, end-to-end
-sessions with a simulated hand, semantic scan scheduling and worker failures, Setup Check verdicts and
-persistence, Tiger Data persistence and check history against an offline psycopg fake (no network or credentials
-needed), the bounded history writer, integration fallbacks, and an app smoke test.
-
-```bash
-npm run demo:check
-```
-
-With `npm run dev` running, this plays the full judging demo three times against the live server over the real
-WebSocket. Each run uses a different procedure and a different mistake (skipped step, wrong object, wrong zone).
-
-```bash
-npm run typecheck
-```
+| Command | What it does |
+|---------|----------------|
+| `npm install` | Install the root dev tools (`concurrently`). |
+| `npm run setup` | Create `backend/.venv`, install Python requirements, install the frontend. |
+| `npm run dev` | API on :8000 and the web app on :5173. |
+| `npm run stop` | Free ports left busy by an earlier run. |
+| `npm test` | pytest, then the frontend Vitest suite. |
+| `npm run typecheck` | `tsc` for the frontend. |
+| `npm run build` | Typecheck and production Vite build. |
+| `npm run demo:check` | Three color-mode demos over WebSocket. Needs a running API. Default `ws://127.0.0.1:8000/ws`. Set `TEACHBACK_DEMO_URL` to aim it at another server. Use a temporary `TEACHBACK_DATA_DIR` if that server must not touch a saved procedure. |
+| `npm run tiger:check` | Apply Tiger migrations and roll back a probe. Prints no connection string. |
+| `npm run mat:check` | Offline mat landmark check. See above. |
+| `npm run semantic:sizes` | LocateAnything size sweep at 448, 512, and 640. Needs WSL, CUDA, and the model. |
 
 ## Project layout
 
 ```
 backend/app/
-  config.py        every threshold: HSV colors, zones, stability timing, motion gate
+  config.py        thresholds, including semantic_max_dim validation
   vision.py        HSV segmentation → objects, zones, stacking; motion meter; color calibration
-  detectors.py     color detector adapter + conservative semantic scan validation/scheduling
-  locate_worker.py lazy persistent WSL/CUDA LocateAnything worker with deadlines
+  mat.py           landmark geometry, tracking, canonical warp, 10% band mask
+  detectors.py     color detector, semantic validation, latest-only scans
+  locate_worker.py persistent WSL/CUDA worker, background preload, readiness probe
   stability.py     turns noisy frames into committed "stable" arrangements
   engine.py        TeachRecorder + PracticeEngine (deterministic pass/fail)
   describe.py      deterministic step / correction wording
-  session.py       modes, keyframes, persistence, Setup Check workspace
-  setups.py        Setup Check types, SetupRepository + local JSON store + selection, deterministic checker
-  history.py       SetupCheckEvent, readiness summary, CheckHistoryRepository, bounded HistoryWriter
-  tiger.py         Tiger setups + check-history repositories (psycopg 3, TLS, parameterized SQL, caches)
-backend/sql/       001_tiger_setups.sql, 002_tiger_setup_check_history.sql (hypertable), applied in order
-backend/tiger_check.py  npm run tiger:check: migrate + rolled-back verification of both tables
-  integrations.py  Gemini step wording, ElevenLabs voice (both optional)
-  main.py          FastAPI: /ws, /api/speak, /api/keyframes
-backend/tests/     pytest suite
-backend/demo_check.py  live 3-run demo check
-frontend/src/      React UI (App, StatusCard, Timeline, SetupPanel, Overlay, Simulator, speech)
+  session.py       modes, mat routing, keyframes, persistence, Setup Check
+  sources.py       camera ownership earned by valid frames
+  setups.py        Setup Check types, local JSON store, deterministic checker
+  history.py       SetupCheckEvent, readiness summary, bounded HistoryWriter
+  tiger.py         Tiger setups + check-history repositories
+backend/sql/       001_tiger_setups.sql, 002_tiger_setup_check_history.sql
+backend/mat_check.py     npm run mat:check
+backend/tiger_check.py   npm run tiger:check
+backend/demo_check.py    three live color demos
+frontend/src/      React UI (App, StatusCard, MatView, Timeline, SetupPanel, Overlay, Simulator)
+benchmarks/locate_anything/size_sweep.py   npm run semantic:sizes
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md), [DEMO_SCRIPT.md](DEMO_SCRIPT.md), and [PROGRESS.md](PROGRESS.md).
@@ -245,8 +322,10 @@ The local LocateAnything benchmark and constrained beta decision are documented 
   webcam (Teams, Zoom). The page must be opened as `http://localhost:5173`, because browsers only allow cameras on
   localhost or HTTPS. Use **Simulator** to keep demoing.
 - **A colored object isn't detected**: calibrate colors. Check the debug drawer for per-object confidence.
-- **A semantic scan is ambiguous**: use the four recommended objects, separate them, remove clutter/overlap, keep
-  the camera fixed, and scan again. LocateAnything does not expose confidence scores in this build.
+- **Semantic Objects says Loading model**: that is a model load, not a scan. Wait for **Model ready**. **Scan
+  Objects** stays off until then. **Retry model** after **Model error**. Color mode still works.
+- **A semantic scan is ambiguous**: use the four recommended objects, separate them, remove clutter and overlap,
+  keep the landmarks visible, and scan again. LocateAnything does not expose confidence scores.
 - **Status stuck on "Hands moving"**: something in view keeps changing, such as a person, a screen, or flicker. The
   debug drawer shows `motion %`. Raise `motion_threshold` in `config.py`, or aim the camera only at the table.
 - **Steps merge together**: pause about a second with hands off between steps.
@@ -255,9 +334,15 @@ The local LocateAnything benchmark and constrained beta decision are documented 
 ## Known limitations
 
 - Color mode supports one object per color and four colors. Colors must stand out from the table and skin tones.
+- Mat tracking needs all four stickers visible and a real camera. The simulator bypasses it. A lost, unsteady, or
+  stale track produces no verdict.
 - Semantic Objects is an opt-in, manual-scan beta: 2–6 uniquely described, separated objects; no stacking or
-  automatic continuous tracking. The broader 12-object benchmark reached 58.3%, so use the verified four-object
-  set rather than claiming arbitrary-object reliability.
+  automatic continuous tracking. The default input size is 448 because that size kept the four demo labels on the
+  three evaluation photos. The broader 12-object benchmark reached 58.3%, so do not claim arbitrary-object
+  reliability. Cold-start seconds from the size sweep are not a comparison of image sizes.
+- **Retry model** is covered by automated worker tests. It has not been exercised by crashing a live GPU.
+- The size-sweep boxes used to draw overlays are approximate. The 448 decision used label presence, not IoU.
+  GPU memory in that report is device-wide `nvidia-smi`, not the worker process alone.
 - Setup Check inherits the semantic beta's limits. A detector miss is reported as *Missing*: it can cause a false
   alarm, but never a false pass. Unexpected objects are only found among the configured object descriptions (at
   most 6 per scan, including the setup's own). Checks compare zones, not exact positions. While a semantic *procedure* is saved, its object descriptions stay locked (existing rule), so Setup
@@ -272,7 +357,9 @@ The local LocateAnything benchmark and constrained beta decision are documented 
 - Stacking is inferred from a single 2D view. Touching objects can look stacked. Objects that haven't moved since
   the last settled state are never newly counted as stacked, which removes most false positives.
 - An object hidden inside an opaque container counts as occluded. Use open or marked container areas.
-- The newest browser tab owns the camera. Viewer tabs receive its live JPEG frames and the shared state.
-- Tested with the simulator and synthetic frames. Tune real webcam lighting with the calibration step before judging.
-- Direct iPhone/Android browser capture needs a trusted HTTPS tunnel. The QR dialog reports when its current link is
-  only insecure LAN HTTP instead of pretending the camera will work.
+- Camera ownership is earned by a valid frame, not by opening a tab. Viewer tabs receive the owner's JPEG and the
+  shared state.
+- Automated tests cover the simulator, synthetic frames, mat geometry, and the semantic worker protocol. A full
+  pass on a physical iPhone or OnePlus, under venue lighting, has not been recorded.
+- Direct iPhone or Android browser capture needs a trusted HTTPS tunnel. The QR dialog says when the link is only
+  insecure LAN HTTP.

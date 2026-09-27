@@ -1,87 +1,82 @@
-# TeachBack — 60-second demo
+# TeachBack demo
 
-**Before judges arrive (2 min)**
-- `npm run dev`, open http://localhost:5173 in Chrome, allow the camera, and press F11 for full screen.
-- If using a phone directly, start the trusted HTTPS tunnel, press **Connect phone**, paste the tunnel URL if it is
-  not already configured, scan the QR, allow the rear camera, and confirm the laptop says **Phone streaming**.
-- Put the red, yellow, green, and blue objects on the table. Check that the overlay labels all four at 90% or more.
-  If not, use **Calibrate colors**.
-- Press **Reset** (`R`). Voice on. Laptop volume up.
-- Backup: if the camera misbehaves, click **Simulator** and run the same script by dragging blocks.
+Four objects, one teach, one deliberate mistake, one setup check. Color mode is the recovery path if the model
+does not reach Ready.
 
----
+## Pre-demo checklist
 
-**0:00 — Hook (10 s)**
-> "Training someone on a hands-on procedure usually means an expert standing over their shoulder. TeachBack
-> watches the expert do it once, then coaches the next person and catches their mistakes."
+Do this before judges are in front of the table.
 
-**0:10 — Judge invents the procedure (5 s)**
-> "Give me any four steps with these blocks: move one to another zone, stack one, anything."
-(For example: red to B, stack yellow on blue, green to C, red back to A.)
+1. Stabilize or mount the phone so the whole mat stays in frame.
+2. Keep all four mat landmarks visible: purple creature, frog, potion bottle, SteelSeries logo.
+3. From the repo: `npm run dev`. Open http://localhost:5173 on the laptop.
+4. Select **Semantic Objects**. Wait until the label says **Model ready**. If it stays on **Loading model**, do
+   not start the demo. If it says **Model error**, press **Retry model** once. If it still fails, use Color mode.
+5. Start a trusted HTTPS tunnel to the frontend, for example `cloudflared tunnel --url http://localhost:5173`.
+6. Paste that HTTPS address into **Connect phone**, or set `TEACHBACK_PHONE_URL` in `.env` and restart.
+7. Open the QR link on the phone and approve the rear camera.
+8. On the laptop, confirm the button says **Phone streaming**. **Phone connected — no video yet** means the page
+   is open and no valid frame has arrived.
+9. Press **Calibrate mat**. Click TL purple creature, TR frog, BR potion bottle, BL SteelSeries logo. Save.
+10. Wait until the status says **Mat tracking** and the view is the top-down mat, not the raw camera.
 
-**0:15 — Teach (15 s)** Press **Teach** (`T`). Arrange the start, then hands off.
-Do the four steps, pausing hands-off for about a second after each.
-> "It isn't recording video. It's recording state changes: which object ended up where."
-Point at the timeline filling in with before/after snapshots.
+Put only these objects on the mat, separated, none on the corner stickers:
 
-**0:30 — Practice (20 s)** Press **Practice** (`P`). The judge (or a teammate) restores the start and does step 1
-correctly, and it goes green. Then **skip step 2** on purpose.
-TeachBack turns red and says it out loud: *"Skipped step 2. Expected: … Observed: … Put … back."*
-> "Deterministic, instant, and it tells you how to fix it."
+- blue water bottle
+- brown wallet
+- green smartwatch
+- blue smartphone
 
-**0:50 — Recover (10 s)** Undo the mistake. The card reads "Back on track". Finish the remaining steps, and it shows
-"Procedure complete".
-> "Any procedure, taught once, no code. Next: kitchens, labs, assembly lines."
+Descriptions field, already the default: `blue water bottle, brown wallet, green smartwatch, blue smartphone`.
+Press **Apply objects** if you changed it. Press **Reset**. Voice on. Laptop volume up.
 
----
+## Teach and practice
 
-**If asked**
-- *Is the AI deciding?* No. Pass/fail is a deterministic comparison of object placements. Gemini only names the
-  steps; ElevenLabs only speaks.
-- *Hands in the way?* Hands moving or covering an object is a "waiting" state, never an error.
-- *Other mistakes?* Wrong object, right object in the wrong zone, and steps done too early are all caught (show one).
-- *Tests?* `npm test` runs 91 tests. `npm run demo:check` replays three full demos with different mistakes.
+**Operator.** Press **Teach**. Arrange the start. Hands off. Press **Scan Objects**. Move one object to another
+zone. Hands off. Press **Scan Objects**. Repeat until four steps are in, or press **Finish Teaching** earlier if
+the judge only asked for a short sequence. Press **Practice**. Put the objects back to the start. Scan. Do the
+first step correctly and scan.
 
-## Optional semantic-object variant
+**Say.** "It learns the procedure from the objects and the zones, not from a script."
 
-Keep the color script above as the reliable 60-second judging path. If there is time to show the local AI model,
-enable `TEACHBACK_SEMANTIC_BETA=1`, select **Semantic Objects · Beta**, and use exactly: blue water bottle, brown
-wallet, green smartwatch, blue smartphone. Spread them across the black mat with no overlap. Press **Teach**, wait
-for **Stable**, then press **Scan Objects**. After each move, hands off and press **Scan Objects** again. Pre-warm
-the model before judges arrive; the verified warm scan is about 2 seconds. Do not demonstrate stacking in this mode.
+## One mistake, then the fix
 
-If it cannot see exactly one of every requested object, separate the objects and retry. If the worker fails, press
-**Pause procedure**, select **Color**, and continue with the primary demo. The semantic procedure remains saved.
+**Operator.** Skip the next step on purpose. Scan. Leave the red card up long enough to read Expected, Observed,
+and Fix. Undo that move. Scan again. Finish the remaining steps.
 
-## Optional Setup Check (about 45 s, semantic beta)
+**Say.** "That miss does not advance. Put it back, scan, and it continues."
 
-Pre-warm the model first. Object descriptions: `blue water bottle, brown wallet, green smartwatch` (all three belong
-in the setup), then apply them.
+## Setup Check
 
-1. Click **Setup Check**. Spread the three objects across Zones A, B, and C, hands off, and press **Scan Objects**.
-   Type `Lab bench` and press **Capture Setup**.
-   > "TeachBack just learned what a correctly set-up bench looks like."
-2. Take the wallet away and move the smartwatch to another zone. Hands off, then press **Check Setup**.
-   The panel shows **Needs attention**, with *Missing: brown wallet* and *Wrong zone: green smartwatch*.
-3. To show *Unexpected*: add `blue smartphone` to the descriptions, apply, place the phone, and check again.
-4. Restore the bench and check again. It shows **Complete and correctly arranged**.
-   > "Same deterministic check for lab setups, training trays, or tool boards. The AI finds objects; plain rules
-   > decide pass/fail."
+**Operator.** Press **Pause procedure** if a procedure is running, then **Setup Check**. Three objects is enough:
+water bottle, wallet, smartwatch, one per zone. Scan. Name it `Lab bench`. Press **Capture Setup**. Remove the
+wallet and move the watch. Scan with **Check Setup**. Restore them and check again. Press **Procedure** to leave.
 
-Switch back with **Procedure**. The saved procedure is untouched.
+**Say.** "Same scan, plain rules: missing, wrong zone, or complete. The model does not grade the setup."
 
-**With Tiger Data (optional).** If `TIGER_DATABASE_URL` is set and `npm run tiger:check` passed, the Setup panel
-shows **Storage: Tiger Data**. Point at it after step 1:
-> "That bench definition just went to Tiger Cloud, so any station can check against the same reference."
+## Readiness, in one sentence
 
-If the panel instead says **Tiger Data unavailable** (for example, venue Wi-Fi), capture is disabled on purpose.
-Press **Retry connection**, or remove the variable and restart to demo with local storage. Never show `.env` on
-screen.
+**Say.** "Semantic mode loads the local model in the background. Scanning stays off until it reports ready."
 
-**Readiness history (Tiger Data time-series).** Each check you ran above also landed in a TigerData hypertable.
-Point at the panel's **Readiness** and **Recent checks** lists:
-> "Every check is an immutable time-series event. TigerData's time_bucket turns them into an hourly readiness
-> score, so a lab manager can see *when* benches were ready, not just whether one is ready now."
+Do not say it is scanning while the label says **Loading model**.
 
-The pill next to the verdict says whether *this* check was saved. If history is unavailable, the verdict is
-still correct; only the record is missing, and the UI says so.
+## Optional: tracking loss
+
+Only if the phone is mounted and tracking has been steady for several seconds.
+
+**Operator.** Cover one corner sticker, or tilt the phone until the card says the mat is lost. Uncover all four
+corners and wait until **Mat tracking** returns. Do not scan during the loss.
+
+**Say.** "If it cannot see the mat, it refuses a verdict instead of guessing."
+
+Skip this if the view flickers. A flaky loss looks like a bug.
+
+## If something breaks
+
+| What happened | What to do |
+|---------------|------------|
+| A sticker moved or tracking says recalibrate | **Calibrate mat** again, same four clicks, then wait for **Mat tracking**. |
+| **Model error** | **Retry model**. If it fails, **Color**, and demo with the red, yellow, green, and blue objects. |
+| Phone video stops | The laptop should return to its own camera within a couple of seconds. Reopen the QR page. Wait for **Phone streaming**, then recalibrate if the card asks. |
+| Scan says it cannot see an object | Separate the four objects, keep hands out, scan again. There is no confidence number to interpret. |
+| Tunnel or QR is `http://` | The phone will not open the camera. Use the HTTPS tunnel URL. |
