@@ -8,8 +8,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from .assistant import ProcedureContext, clean_question
 from .config import settings
 from .integrations import ElevenLabsVoice, GeminiDescriber
 from .pairing import phone_link
@@ -128,6 +129,39 @@ async def _describe(index: int, after_image: str | None) -> None:
         await hub.broadcast(session.snapshot())
 
 
+async def suggest_pending_metadata() -> None:
+    """Ask Gemini for a draft name/summary in the background. Teaching, saving and Practice never wait for it."""
+    pending = session.take_pending_suggestion()
+    if pending:
+        asyncio.create_task(_suggest(*pending))
+
+
+async def _suggest(seq: int, ctx: ProcedureContext) -> None:
+    state, meta = await gemini.suggest_metadata(ctx)
+    if session.apply_suggestion(seq, state, meta):
+        await hub.broadcast(session.snapshot())
+
+
+class AskRequest(BaseModel):
+    question: str = Field(max_length=2000)
+    procedureId: str | None = Field(default=None, max_length=64)  # a saved procedure; None = the active one
+
+
+@app.post("/api/ask")
+async def ask(req: AskRequest) -> dict:
+    """Ask TeachBack about one procedure. Answers are grounded in it (or fall back to its stored steps) and
+    never change the procedure or any Practice verdict."""
+    try:
+        question = clean_question(req.question)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+    ctx = session.ask_context(req.procedureId)
+    if ctx is None:
+        raise HTTPException(404, "No procedure selected.")
+    answer = await gemini.ask(ctx, question)
+    return {"question": question, **answer.to_json()}
+
+
 @app.get("/api/health")
 def health() -> dict:
     return {"ok": True, "mode": session.mode, "gemini": gemini.enabled, "elevenlabs": voice.enabled,
@@ -244,6 +278,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     continue
                 await hub.broadcast(snap)
             await describe_pending_steps()
+            await suggest_pending_metadata()
     except WebSocketDisconnect:
         pass
     finally:

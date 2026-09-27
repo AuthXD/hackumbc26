@@ -168,8 +168,12 @@ learned semantic procedure is preserved.
 After **Finish Teaching**, the status card asks you to **Name and save this procedure** (Practice works straight
 away too). In **Procedure Library** below the timeline:
 
-1. The **Procedure name** field starts with a plain default such as *Four-step color-block procedure*. Edit it and
-   the optional summary, then press **Save Procedure**. Saving never changes the learned steps.
+1. The **Procedure name** field starts with a plain default such as *Four-step color-block procedure*. With
+   `GEMINI_API_KEY` set, the panel shows **Generating suggestion…** and then either **Suggested by Gemini** (a
+   validated name, one-sentence summary and up to 3 tags that mention only this procedure's objects and step
+   count), **Suggestion rejected — enter a name**, or **Gemini unavailable — enter a name**. Edit the name and the
+   optional summary, then press **Save Procedure**. Saving never waits for Gemini and never changes the learned
+   steps. A card is marked **AI name** only if a live, validated suggestion was saved unchanged.
 2. Saving a name that already exists is an explicit replace: the button reads **Replace Saved Procedure** and the
    hint says so. The original creation time is kept.
 3. Each card shows the name, summary, detector, object count, step count, and when it was last saved. **Load**
@@ -185,6 +189,22 @@ Procedures are stored in Tiger Data when `TIGER_DATABASE_URL` is set (table `tea
 shows **Tiger Data unavailable** and saving is disabled; nothing is written locally instead, and Practice still
 works. Keyframe images are not stored in the database, so a procedure loaded on another machine simply shows no
 thumbnails.
+
+### Ask TeachBack (grounded questions about one procedure)
+
+Below the library, **Ask TeachBack** answers questions about the active procedure or any saved one. Choose it
+under **Procedure**, type a question under **Ask about this procedure**, and press **Ask**. While waiting it shows
+**Thinking…**, then the answer with **Step N** chips and any objects it needs, labeled *Grounded in this saved
+procedure*. Without a procedure it says **No procedure selected**.
+
+Gemini receives only the procedure's name, summary, tags, tracked objects and ordered step text as JSON data (no
+images, no camera frames). Stored names, tags and your question are marked as data, not instructions. Answers are
+rejected if they are malformed, too long, cite a step that does not exist, list an object that was never tracked,
+or mention an untracked color or object. A disclaimer is kept only for medical or safety questions (a standard
+one is added if Gemini omits it). Without a key, on a timeout, or on a rejected answer, TeachBack shows the stored
+steps instead with **Gemini unavailable, showing stored instructions** (or a note that the answer was not
+grounded). The transcript is kept per procedure in this browser tab only (last 6 questions). Loading or re-saving
+a procedure starts a new one. Ask never changes a procedure, and Practice alone decides correctness.
 
 ### Setup Check mode (needs the Semantic Objects beta)
 
@@ -326,12 +346,13 @@ backend/app/
   setups.py        Setup Check types, local JSON store, deterministic checker
   history.py       SetupCheckEvent, readiness summary, bounded HistoryWriter
   library.py       SavedProcedure, local procedure library, deterministic default names
+  assistant.py     Ask TeachBack grounding: context, validation, deterministic fallbacks
   tiger.py         Tiger setups + check-history + procedure repositories
 backend/sql/       001_tiger_setups.sql, 002_tiger_setup_check_history.sql, 003_tiger_procedures.sql
 backend/mat_check.py     npm run mat:check
 backend/tiger_check.py   npm run tiger:check
 backend/demo_check.py    three live color demos
-frontend/src/      React UI (App, StatusCard, MatView, Timeline, ProcedureLibrary, SetupPanel, Overlay, Simulator)
+frontend/src/      React UI (App, StatusCard, MatView, Timeline, ProcedureLibrary, AskTeachBack, SetupPanel, ...)
 benchmarks/locate_anything/size_sweep.py   npm run semantic:sizes
 ```
 
@@ -356,6 +377,11 @@ The local LocateAnything benchmark and constrained beta decision are documented 
 - **Port already in use**: `npm run stop`.
 
 ## Known limitations
+
+- Ask TeachBack's grounding check is a word-level filter: it catches untracked colors, a fixed list of common
+  object names, invalid step numbers and untracked "required objects". It cannot prove that every phrase is
+  faithful, so answers are labeled with their source and Practice stays the only judge. Live Gemini latency was
+  about 20–25 s under load, with frequent 503s; those fall back to the stored steps (30 s timeout).
 
 - Color mode supports one object per color and four colors. Colors must stand out from the table and skin tones.
 - Mat tracking needs all four stickers visible and a real camera. The simulator bypasses it. A lost, unsteady, or

@@ -4,6 +4,7 @@ import {
   StabilizedMat, undoPoint, type Pt,
 } from "./MatView";
 import { Overlay } from "./Overlay";
+import { AskTeachBack } from "./AskTeachBack";
 import { PhoneCamera, PhoneLinkButton } from "./PhoneLink";
 import { ProcedureLibrary } from "./ProcedureLibrary";
 import { SetupPanel } from "./SetupPanel";
@@ -471,6 +472,7 @@ export default function App() {
       {setupMode ? <SetupPanel u={u} send={send} /> : <>
         <Timeline u={u} />
         <ProcedureLibrary u={u} send={send} />
+        <AskTeachBack u={u} />
       </>}
 
       <details className="debug">

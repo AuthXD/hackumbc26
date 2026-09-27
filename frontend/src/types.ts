@@ -176,7 +176,19 @@ export type LibraryState = {
     saved: boolean;
     suggestionState: SuggestionState;
     suggestion: ProcedureMetadata | null;
+    key: string; // identifies this draft (Ask transcripts never carry over to another one)
   };
+};
+
+export type AskAnswer = {
+  question: string;
+  answer: string;
+  relevantStepNumbers: number[];
+  requiredObjects: string[];
+  disclaimer: string | null;
+  source: "gemini" | "stored";
+  procedureKey: string;
+  notice: string;
 };
 
 export type ServerUpdate = {

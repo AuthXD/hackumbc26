@@ -15,13 +15,29 @@ from collections import OrderedDict
 
 import httpx
 
+from .assistant import (
+    ASK_SCHEMA,
+    METADATA_SCHEMA,
+    SYSTEM_INSTRUCTION,
+    AskAnswer,
+    ProcedureContext,
+    ask_prompt,
+    fallback_answer,
+    metadata_prompt,
+    validate_answer,
+    validate_metadata,
+)
 from .config import Settings
+from .library import ProcedureMetadata
 from .models import LearnedStep, StepText
 
 log = logging.getLogger("teachback.integrations")
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 ELEVENLABS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice}"
+# Assistant calls: thinking tokens count against the output cap, and live latency was ~20-25 s under load.
+ASSISTANT_TIMEOUT_S = 30
+ASSISTANT_MAX_TOKENS = 2048
 
 STEP_SCHEMA = {
     "type": "OBJECT",
@@ -131,6 +147,64 @@ class GeminiDescriber:
             return None
         self.cache[key] = text
         return text
+
+
+    # -- procedure assistant (text only, grounded in one procedure) ---------------------------------------
+
+    async def _generate(self, prompt: str, schema: dict) -> str | None:
+        """One structured JSON call. Logs only status codes and exception classes: prompts carry user text."""
+        body = {
+            "systemInstruction": {"parts": [{"text": SYSTEM_INSTRUCTION}]},
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "responseSchema": schema,
+                "temperature": 0.2,
+                "maxOutputTokens": ASSISTANT_MAX_TOKENS,
+            },
+        }
+        try:
+            async with httpx.AsyncClient(timeout=ASSISTANT_TIMEOUT_S, transport=self.transport) as client:
+                res = await client.post(
+                    GEMINI_URL.format(model=self.cfg.gemini_model),
+                    headers={"x-goog-api-key": self.cfg.gemini_api_key},
+                    json=body,
+                )
+            if res.status_code != 200:
+                log.warning("Gemini assistant HTTP %s", res.status_code)
+                return None
+            raw = res.json()["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception as exc:
+            log.warning("Gemini assistant request failed (%s)", type(exc).__name__)
+            return None
+        return raw if isinstance(raw, str) and len(raw) <= 4000 else None
+
+    async def suggest_metadata(self, ctx: ProcedureContext) -> tuple[str, ProcedureMetadata | None]:
+        """("suggested", metadata) only for a live, validated, grounded answer; else ("unavailable"|"rejected", None)."""
+        if not self.enabled:
+            return "unavailable", None
+        raw = await self._generate(metadata_prompt(ctx), METADATA_SCHEMA)
+        if raw is None:
+            return "unavailable", None
+        meta = validate_metadata(raw, ctx)
+        if meta is None:
+            log.warning("Gemini procedure suggestion rejected (malformed, oversized or ungrounded)")
+            return "rejected", None
+        return "suggested", meta
+
+    async def ask(self, ctx: ProcedureContext, question: str) -> AskAnswer:
+        """A grounded answer, or the stored instructions with an honest notice. Never raises."""
+        if not self.enabled:
+            return fallback_answer(ctx, question, "Gemini unavailable, showing stored instructions.")
+        raw = await self._generate(ask_prompt(ctx, question), ASK_SCHEMA)
+        if raw is None:
+            return fallback_answer(ctx, question, "Gemini unavailable, showing stored instructions.")
+        answer = validate_answer(raw, ctx, question)
+        if answer is None:
+            log.warning("Gemini answer rejected (malformed or not grounded in the procedure)")
+            return fallback_answer(ctx, question,
+                                   "Gemini's answer was not grounded in this procedure, showing stored instructions.")
+        return answer
 
 
 class ElevenLabsVoice:

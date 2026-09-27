@@ -340,3 +340,18 @@ ownership, and `procedure.json`'s role are unchanged. Keyframes stay on disk onl
 
 Verification: 245 pytest, 31 Vitest, typecheck, build, and `npm run tiger:check` (procedure insert / upsert /
 read-back / CHECK probe rolled back, no probe row left) all passed.
+
+### Gemini-grounded procedure assistant (2026-09-27)
+
+With a Gemini key, a freshly taught draft gets a background name/summary/tags suggestion, validated for shape,
+length and grounding (only tracked objects, correct counts). Otherwise the deterministic name stays and the panel
+says why. **Ask TeachBack** answers questions about the active or a saved procedure using only its name, summary,
+tags, objects and ordered deterministic steps. Invalid step citations, untracked "required objects" and
+untracked colors/objects are rejected in favor of stored-step answers. Gemini never changes a procedure or a
+verdict. Tests no longer inherit real Gemini/ElevenLabs keys from `.env`.
+
+Verification: 286 pytest, 46 Vitest, typecheck, build, `npm run tiger:check`, `git diff --check`. One short live
+probe with a synthetic procedure (no camera, no server): the name suggestion was accepted as grounded, a safety
+question got a grounded answer with a disclaimer, and three questions hit Gemini 503 "high demand" and fell back
+to stored steps. The latency (~20–25 s) led to a 30 s assistant timeout and a 2048-token cap (thinking tokens count
+against it). Not verified in the browser against live Gemini.

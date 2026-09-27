@@ -343,3 +343,16 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
 .library-summary { margin: 0; color: #c9d3e0; font-size: 15px; }
 .library-meta { margin: 0; color: var(--muted); font-size: 13px; }
 .library-card .btn { justify-self: start; }
+
+/* Ask TeachBack */
+.ask-panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 10px; }
+.ask-transcript { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ask-turn { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; display: grid; gap: 6px; }
+.ask-question { margin: 0; font-weight: 700; }
+.ask-thinking { margin: 0; color: var(--muted); }
+.ask-answer { display: grid; gap: 6px; }
+.ask-answer p { margin: 0; }
+.ask-notice { color: var(--warning); font-size: 14px; }
+.ask-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.ask-objects, .ask-source { color: var(--muted); font-size: 13px; }
+.ask-disclaimer { color: var(--warning); font-size: 14px; }

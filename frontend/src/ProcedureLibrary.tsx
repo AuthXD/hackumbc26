@@ -54,6 +54,7 @@ export function LibraryCard({ card, loaded, canLoad, nowMs, onLoad }: {
     <article className={`library-card ${loaded ? "loaded" : ""}`}>
       <header className="library-card-head">
         <h3>{card.name}</h3>
+        {card.aiGeneratedMetadata && <span className="slot-ai" title="Name and summary suggested by Gemini">AI name</span>}
         {loaded && <span className="library-loaded">Loaded</span>}
       </header>
       {card.summary && <p className="library-summary">{card.summary}</p>}
@@ -71,8 +72,9 @@ export function LibraryCard({ card, loaded, canLoad, nowMs, onLoad }: {
 /** Name, save and load taught procedures. Correctness still comes only from deterministic Practice. */
 export function ProcedureLibrary({ u, send }: { u: ServerUpdate | null; send: (payload: object) => void }) {
   const library = u?.library;
-  const [name, setName] = useState("");
-  const [summary, setSummary] = useState("");
+  const initial = () => (library?.draft.available ? prefill(library) : { name: "", summary: "" });
+  const [name, setName] = useState(() => initial().name);
+  const [summary, setSummary] = useState(() => initial().summary);
   const [edited, setEdited] = useState(false);
   const [pending, setPending] = useState<{ revision: number; at: number; action: string } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());

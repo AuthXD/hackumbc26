@@ -14,6 +14,7 @@ import numpy as np
 from .config import DATA_DIR, ColorRange, Settings, default_colors, settings
 from .engine import Event, PracticeEngine, TeachRecorder, speak
 from .detectors import ColorDetector, DEFAULT_LABELS, LatestScan, LocateAnythingDetector, parse_labels
+from .assistant import ProcedureContext, procedure_context
 from .library import (
     ProcedureMetadata,
     ProcedureRepository,
@@ -106,6 +107,8 @@ class Session:
         self.loaded_procedure_id: str | None = None  # library entry the active procedure came from / was saved as
         self.suggestion_state = "none"  # none | generating | suggested | unavailable | rejected
         self.suggestion: ProcedureMetadata | None = None  # draft name/summary/tags offered to the user
+        self.draft_seq = 0  # identifies the current draft, so a late Gemini suggestion cannot land on another
+        self.pending_suggestion = False  # a draft is waiting for main.py to request a Gemini suggestion
         self.library_revision = 0  # bumped when a save/load/refresh finishes, so the page knows its reply arrived
         self.setup_event: SetupCheckEvent | None = None  # the one event for the current verdict
         self.selected_setup_id: str | None = None
@@ -510,12 +513,56 @@ class Session:
     def _forget_draft(self) -> None:
         self.loaded_procedure_id = None
         self.suggestion_state, self.suggestion = "none", None
+        self.draft_seq += 1  # any in-flight Gemini suggestion now belongs to a procedure that is gone
+        self.pending_suggestion = False
 
     def _start_draft(self) -> None:
-        """A freshly taught procedure is an unsaved draft with a deterministic suggested name."""
+        """A freshly taught procedure is an unsaved draft with a deterministic suggested name. With a Gemini key,
+        a suggestion is requested in the background; the deterministic name stays until a valid one arrives."""
         self.loaded_procedure_id = None
+        self.draft_seq += 1
         self.suggestion = fallback_metadata(self.procedure)
-        self.suggestion_state = "unavailable"
+        self.suggestion_state = "generating" if self.cfg.gemini_api_key else "unavailable"
+        self.pending_suggestion = self.suggestion_state == "generating"
+
+    def take_pending_suggestion(self) -> tuple[int, ProcedureContext] | None:
+        """The draft awaiting a Gemini suggestion (once), as grounding context only."""
+        with self.lock:
+            if not self.pending_suggestion or self.procedure is None:
+                return None
+            self.pending_suggestion = False
+            ctx = procedure_context(f"draft-{self.draft_seq}", "Unsaved procedure", "", (), self.procedure)
+            return self.draft_seq, ctx
+
+    def apply_suggestion(self, seq: int, state: str, meta: ProcedureMetadata | None) -> bool:
+        """Offer a validated suggestion for the same draft. Only names/summaries change; never the procedure."""
+        with self.lock:
+            if seq != self.draft_seq or self.suggestion_state != "generating" or self.loaded_procedure_id:
+                return False  # taught again, reset, loaded or already saved meanwhile
+            if state == "suggested" and meta is not None:
+                self.suggestion, self.suggestion_state = meta, "suggested"
+            else:
+                self.suggestion_state = "rejected" if state == "rejected" else "unavailable"
+            return True
+
+    def ask_context(self, procedure_id: str | None) -> ProcedureContext | None:
+        """Grounding for Ask TeachBack: a saved procedure by id, or the active one (cache only, no I/O)."""
+        with self.lock:
+            if procedure_id:
+                saved = self.procedures.get(procedure_id)
+                if saved is None:
+                    return None
+                return procedure_context(f"{saved.id}@{saved.updated_at}", saved.name, saved.summary, saved.tags,
+                                         saved.procedure)
+            proc = self.procedure
+            if proc is None or not proc.steps or self.mode == "teaching":
+                return None
+            saved = self.procedures.get(self.loaded_procedure_id) if self.loaded_procedure_id else None
+            if saved is not None:
+                return procedure_context(f"{saved.id}@{saved.updated_at}", saved.name, saved.summary, saved.tags,
+                                         proc)
+            # An unsaved draft has no user-approved name yet; only its deterministic steps are facts.
+            return procedure_context(f"draft-{self.draft_seq}", "Unsaved procedure", "", (), proc)
 
     @staticmethod
     def _keyframe_keys(proc: Procedure) -> set[str]:
@@ -621,6 +668,8 @@ class Session:
         self.procedure = saved.procedure.model_copy(deep=True)
         self.loaded_procedure_id = saved.id
         self.suggestion_state, self.suggestion = "none", None
+        self.draft_seq += 1
+        self.pending_suggestion = False
         self._restore_keyframes(self.procedure)
         self._save()  # procedure.json mirrors the active procedure
         self.tracker.reset()
@@ -672,6 +721,7 @@ class Session:
                 "saved": draft and self.loaded_procedure_id is not None,
                 "suggestionState": self.suggestion_state,
                 "suggestion": meta.to_json() if meta else None,
+                "key": f"draft-{self.draft_seq}",
             },
         }
 
