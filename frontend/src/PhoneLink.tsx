@@ -98,8 +98,8 @@ export function PhoneLinkButton({ phone }: { phone: CameraStatus["phone"] }) {
 const MAT_SHORT_OVER_LONG = 0.41;
 const LANDMARKS = ["Creature", "Frog", "Potion", "Logo"];
 
-/** Approximate framing guide: where the mat and its four corner landmarks should sit in the picture. */
-function FramingGuide({ aspect, corners }: { aspect: number; corners: [number, number][] | null }) {
+/** Approximate framing guide before calibration; the actual tracked outline afterwards. */
+export function FramingGuide({ aspect, corners }: { aspect: number; corners: [number, number][] | null }) {
   // Fit the mat's long axis along the picture's long axis, leaving a margin.
   const portrait = aspect < 1;
   const long = 0.84;
@@ -108,10 +108,11 @@ function FramingGuide({ aspect, corners }: { aspect: number; corners: [number, n
   const x0 = (1 - w) / 2;
   const y0 = (1 - h) / 2;
   const guide: [number, number][] = [[x0, y0], [x0 + w, y0], [x0 + w, y0 + h], [x0, y0 + h]];
+  const shown = corners ?? guide;
   return <svg className="phone-guide" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
-    <polygon points={guide.map(([x, y]) => `${x * 100},${y * 100}`).join(" ")} className="guide-mat" />
-    {corners && <polygon points={corners.map(([x, y]) => `${x * 100},${y * 100}`).join(" ")} className="guide-tracked" />}
-    {guide.map(([x, y], i) => <g key={i}>
+    <polygon points={shown.map(([x, y]) => `${x * 100},${y * 100}`).join(" ")}
+      className={corners ? "guide-tracked" : "guide-mat"} />
+    {shown.map(([x, y], i) => <g key={i}>
       <circle cx={x * 100} cy={y * 100} r="2.2" className="guide-corner" />
       <text x={x * 100 + (x < 0.5 ? 3 : -3)} y={y * 100 + (y < 0.5 ? 5 : -3)}
         textAnchor={x < 0.5 ? "start" : "end"} className="guide-label">{i + 1} {LANDMARKS[i]}</text>
@@ -233,12 +234,18 @@ export function PhoneCamera({
     </div>
     <div className="phone-preview-wrap">
       <video ref={videoRef} muted playsInline className="phone-preview" />
-      {ready && !error && <FramingGuide aspect={aspect} corners={streaming && mat?.state === "tracking" ? mat.corners : null} />}
+      {ready && !error && !calibratingMat && <FramingGuide aspect={aspect}
+        corners={streaming && mat?.state === "tracking" ? mat.corners : null} />}
       {matPoints && <MatClickLayer points={matPoints}
         onAdd={(point) => {
           setMatError(null);
           setMatPoints(addPoint(matPoints, point));
         }} />}
+      {matPoints && <div className="phone-calibration-step" aria-live="polite">
+        {matPoints.length < 4
+          ? `${matPoints.length + 1}/4 · ${LANDMARK_STEPS[matPoints.length]}`
+          : "4/4 · Save calibration below"}
+      </div>}
     </div>
     {streaming && !calibratingMat && <button className="btn phone-calibrate-button" onClick={startMatCalibration}>
       {mat?.calibrated ? "Recalibrate corners" : "Calibrate corners"}

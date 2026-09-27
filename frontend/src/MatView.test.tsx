@@ -4,7 +4,7 @@ import {
   addPoint, CALIBRATION_REPLY_MS, calibrationReply, LANDMARK_STEPS, MAT_VIEW_STALE_MS, MatCalibrationBar, MatChip,
   MatClickLayer, MatLayout, matDisplay, MatUnavailable, RawQuad, StabilizedMat, undoPoint, type Pt,
 } from "./MatView";
-import { PhoneLinkButton, PhoneMatCalibrationControls } from "./PhoneLink";
+import { FramingGuide, PhoneLinkButton, PhoneMatCalibrationControls } from "./PhoneLink";
 import { statusView, WORKER_LABEL } from "./StatusCard";
 import type { MatStatus, ServerUpdate } from "./types";
 
@@ -26,6 +26,22 @@ function bar(points: Pt[], error: string | null = null) {
 }
 
 const clicks: Pt[] = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]];
+
+describe("phone mat outline", () => {
+  it("shows only the approximate guide before calibration", () => {
+    const html = renderToStaticMarkup(<FramingGuide aspect={16 / 9} corners={null} />);
+    expect(html).toContain('class="guide-mat"');
+    expect(html).not.toContain('class="guide-tracked"');
+  });
+
+  it("replaces the approximate guide with the actual tracked corners", () => {
+    const corners: [number, number][] = [[0.12, 0.18], [0.91, 0.22], [0.86, 0.81], [0.09, 0.77]];
+    const html = renderToStaticMarkup(<FramingGuide aspect={16 / 9} corners={corners} />);
+    expect(html).toContain('class="guide-tracked"');
+    expect(html).not.toContain('class="guide-mat"');
+    expect(html).toContain('points="12,18 91,22 86,81 9,77"');
+  });
+});
 
 describe("mat calibration clicks", () => {
   it("asks for TL creature, TR frog, BR potion bottle, BL logo in that order", () => {
