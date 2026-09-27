@@ -130,7 +130,8 @@ def test_event_is_immutable_and_consistent():
 
 
 def test_migrations_are_discovered_in_order_and_002_is_a_hypertable():
-    assert [p.name for p in migration_files()] == ["001_tiger_setups.sql", "002_tiger_setup_check_history.sql"]
+    assert [p.name for p in migration_files()] == ["001_tiger_setups.sql", "002_tiger_setup_check_history.sql",
+                                                 "003_tiger_procedures.sql"]
     create, index, comment = migration_statements(migration_files()[1])
     assert create.startswith(f"CREATE TABLE IF NOT EXISTS {CHECKS} (")
     assert "tsdb.hypertable" in create and "tsdb.partition_column = 'checked_at'" in create
@@ -155,7 +156,8 @@ def test_migrations_are_idempotent_and_keep_history():
     assert repo.record(event())
     for _ in range(3):
         with db.connect(SECRET_URL, 5) as conn:
-            assert tiger.apply_migrations(conn) == ["001_tiger_setups", "002_tiger_setup_check_history"]
+            assert tiger.apply_migrations(conn) == ["001_tiger_setups", "002_tiger_setup_check_history",
+                                                    "003_tiger_procedures"]
     assert db.state["hypertable"] and len(db.checks) == 1
 
 
@@ -441,7 +443,7 @@ def test_check_command_verifies_the_history_hypertable_and_leaves_nothing():
     lines = []
     assert tiger_check.run(SECRET_URL, connect=db.connect, out=lines.append) == 0, lines
     joined = "\n".join(lines)
-    assert "001_tiger_setups, 002_tiger_setup_check_history" in joined
+    assert "001_tiger_setups, 002_tiger_setup_check_history, 003_tiger_procedures" in joined
     assert f"PASS {CHECKS} is a TigerData hypertable partitioned on checked_at" in joined
     assert "time_bucket summary" in joined and lines[-1] == "Tiger Data check passed."
     assert db.checks == {} and db.rows == {}

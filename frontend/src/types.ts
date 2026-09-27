@@ -148,11 +148,43 @@ export type SetupState = {
   resultHistory: { eventId: string; state: EventHistoryState | null } | null;
 };
 
+export type SuggestionState = "none" | "generating" | "suggested" | "unavailable" | "rejected";
+
+export type ProcedureMetadata = { name: string; summary: string; tags: string[] };
+
+export type ProcedureCard = {
+  id: string;
+  name: string;
+  summary: string;
+  tags: string[];
+  detectorKind: "color" | "semantic";
+  objectCount: number;
+  stepCount: number;
+  objects: string[];
+  updatedAt: number;
+  aiGeneratedMetadata: boolean;
+};
+
+export type LibraryState = {
+  storage: StorageStatus;
+  procedures: ProcedureCard[];
+  loadedId: string | null; // library entry the active procedure came from or was saved as
+  revision: number; // bumped when a save / load / refresh finishes
+  errors: string[];
+  draft: {
+    available: boolean; // an active procedure exists and teaching is finished
+    saved: boolean;
+    suggestionState: SuggestionState;
+    suggestion: ProcedureMetadata | null;
+  };
+};
+
 export type ServerUpdate = {
   type: "update";
   mode?: Mode;
   workspace?: Workspace;
   setup?: SetupState;
+  library?: LibraryState;
   detector?: DetectorState;
   scene?: SceneState | null;
   zones?: Zone[];

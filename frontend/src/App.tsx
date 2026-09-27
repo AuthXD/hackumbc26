@@ -5,6 +5,7 @@ import {
 } from "./MatView";
 import { Overlay } from "./Overlay";
 import { PhoneCamera, PhoneLinkButton } from "./PhoneLink";
+import { ProcedureLibrary } from "./ProcedureLibrary";
 import { SetupPanel } from "./SetupPanel";
 import { Simulator, type SimulatorHandle } from "./Simulator";
 import { speaker } from "./speech";
@@ -467,7 +468,10 @@ export default function App() {
         <StatusCard view={view} />
       </main>
 
-      {setupMode ? <SetupPanel u={u} send={send} /> : <Timeline u={u} />}
+      {setupMode ? <SetupPanel u={u} send={send} /> : <>
+        <Timeline u={u} />
+        <ProcedureLibrary u={u} send={send} />
+      </>}
 
       <details className="debug">
         <summary>

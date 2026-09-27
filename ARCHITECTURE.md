@@ -168,6 +168,32 @@ procedure commands are refused and the detector stays semantic.
   A worker error or ambiguous scan yields no result, motion discards an in-flight check, and a later move marks the
   last result stale. No LLM is involved.
 
+## Procedure Library (backend/app/library.py)
+
+Named, saved procedures. The *active* procedure is still `Session.procedure`, mirrored to `procedure.json`; the
+library is a separate store and never replaces that file's role.
+
+- **SavedProcedure** `{version: 1, id (slug of name), name 1–60, summary ≤200, tags ≤3, procedure, createdAt,
+  updatedAt, aiGeneratedMetadata}`. Validation re-checks the embedded Procedure: 1–20 steps, indexes 0..n-1,
+  unique tracked ids (≤12), one detector kind. `card()` is the list view sent to the page.
+- **ProcedureRepository** protocol (`list` / `get` / `save` / `refresh` / `status` / `errors`), the same shape as
+  SetupRepository: `list`/`get` serve a validated cache, only `refresh` and `save` touch storage, and `save` is an
+  explicit upsert that keeps `createdAt`.
+  - `JsonProcedureRepository`: one atomic file per procedure in `DATA_DIR/procedures/`; malformed or renamed
+    files are skipped into `errors`.
+  - `TigerProcedureRepository` (`tiger.py`): `teachback_procedures` (migration 003) is a normal table with
+    searchable columns (name, summary, `tags TEXT[]`, detector_kind, step_count, object_count) plus the
+    validated Procedure as JSONB, with CHECK constraints mirroring the model. Every row is re-validated, and a row
+    whose searchable columns disagree with its payload is rejected. Configured-but-unreachable Tiger is an
+    `error` state that refuses saves; there is no local fallback. Keyframe images are not stored.
+- **Session**: `_complete_teaching` starts an unsaved draft with a deterministic `fallback_metadata` name.
+  `save_procedure` runs its I/O outside `Session.lock` and never mutates the procedure. `load_procedure` works
+  only in Procedure mode while idle: it deep-copies the entry, rewrites `procedure.json`, restores any keyframes
+  still on disk, resets the tracker, and restores the detector (semantic needs the beta; if the model is not
+  ready, the procedure stays loaded and the notice says so). Setups, history, mat calibration, and camera
+  ownership are untouched. `reset` clears the active procedure but keeps the library and the keyframe files it
+  references. `library.revision` is bumped when a save/load/refresh finishes, so the page knows its reply came.
+
 ## Key decisions
 
 1. **Steps are state transitions, not captions.** Teaching records the before and after arrangement of each settled

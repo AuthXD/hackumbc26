@@ -178,9 +178,21 @@ function procedureView(u: ServerUpdate | null): View {
   }
 
   if (u.procedure?.steps.length) {
+    const library = u.library;
+    const loaded = library?.procedures.find((p) => p.id === library.loadedId);
+    if (library?.draft.available && !library.draft.saved) {
+      // A freshly taught procedure: saving it is the next step, but Practice works right away too.
+      return {
+        tone: "success",
+        eyebrow: `Ready · ${u.procedure.steps.length} steps learned`,
+        headline: "Name and save this procedure",
+        expected: "Type a name in Procedure Library below and press Save Procedure — or press Practice now.",
+        observed: sceneSummary(u),
+      };
+    }
     return {
       tone: "success",
-      eyebrow: "Ready",
+      eyebrow: loaded ? `Ready · "${loaded.name}"` : "Ready",
       headline: `Learned ${u.procedure.steps.length} steps — press Practice`,
       expected: "Hand the table to the next person and press Practice.",
       observed: sceneSummary(u),

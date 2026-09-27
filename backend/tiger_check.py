@@ -8,7 +8,10 @@
 5. Check history (002): confirm teachback_setup_checks is a TigerData hypertable partitioned on
    checked_at; inside a rolled-back transaction insert two check events, read recent history, run the
    time_bucket readiness query, and validate every returned row.
-6. Confirms no probe rows remain.
+6. Procedure Library (003): inside a rolled-back transaction insert a learned probe procedure, upsert it
+   (conflict path keeps created_at), read it back through SavedProcedure validation, confirm the learned
+   deltas are unchanged and a CHECK constraint rejects an invalid row.
+7. Confirms no probe rows remain.
 
 Only sanitized messages are printed: never the URL, host, user, or password.
 """
@@ -26,7 +29,10 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from app.config import settings
+from app.engine import TeachRecorder
 from app.history import BUCKET_HOURS, SUMMARY_WINDOW_HOURS, SetupCheckEvent
+from app.library import SavedProcedure
+from app.models import Procedure, SceneObject, SceneState
 from app.setups import MisplacedObject, SavedSetup, SetupObject
 from app.tiger import (
     CHECK_TABLE,
@@ -34,16 +40,20 @@ from app.tiger import (
     INSERT_CHECK_SQL,
     PARTITION_COLUMN_SQL,
     RECENT_CHECKS_SQL,
+    SELECT_PROCEDURE_SQL,
     SELECT_SETUP_SQL,
     SET_STATEMENT_TIMEOUT_SQL,
     SUMMARY_BUCKETS_SQL,
     SUMMARY_TOTALS_SQL,
+    UPSERT_PROCEDURE_SQL,
     UPSERT_SETUP_SQL,
     InsecureConnectionError,
     apply_migrations,
     connect_tiger,
     event_params,
+    procedure_params,
     row_to_event,
+    row_to_procedure,
     row_to_setup,
     rows_to_summary,
     setup_params,
@@ -123,6 +133,48 @@ def _verify_history(conn, statement_timeout_ms: int) -> str:
     return probe_setup
 
 
+def _probe_procedure() -> Procedure:
+    """A real learned procedure (one step: red moves from Zone A to Zone B), built by the teach engine."""
+    def scene(red: str) -> SceneState:
+        return SceneState(objects=[
+            SceneObject(id=c, color=c, center=(0.5, 0.5), bbox=(0.4, 0.4, 0.1, 0.1), zone=z)
+            for c, z in (("red", red), ("blue", "C"))])
+    recorder = TeachRecorder(1, 2)
+    recorder.on_stable(scene("A"))
+    recorder.on_stable(scene("B"))
+    return recorder.finish()
+
+
+def _verify_procedures(conn, statement_timeout_ms: int) -> str:
+    probe_id = f"teachback-check-{secrets.token_hex(4)}"
+    now = time.time()
+    probe = SavedProcedure(id=probe_id, name=probe_id, summary="probe", tags=("probe",),
+                           procedure=_probe_procedure(), created_at=now, updated_at=now)
+    with conn.transaction(), conn.cursor() as cur:
+        cur.execute(SET_STATEMENT_TIMEOUT_SQL, (str(statement_timeout_ms),))
+        cur.execute(UPSERT_PROCEDURE_SQL, procedure_params(probe))
+        first = row_to_procedure(cur.fetchone())
+        cur.execute(UPSERT_PROCEDURE_SQL, procedure_params(probe.model_copy(update={"summary": "probe updated"})))
+        second = row_to_procedure(cur.fetchone())
+        if second.summary != "probe updated" or abs(second.created_at - first.created_at) > 1e-3:
+            raise CheckFailed("procedure upsert did not update in place")
+        cur.execute(SELECT_PROCEDURE_SQL, (probe_id,))
+        read_back = row_to_procedure(cur.fetchone())  # validated
+        if [s.delta for s in read_back.procedure.steps] != [s.delta for s in probe.procedure.steps]:
+            raise CheckFailed("stored procedure steps differ from the learned ones")
+        try:
+            with conn.transaction():  # savepoint: an invalid row must be refused by the schema
+                bad = list(procedure_params(probe))
+                bad[4] = "unknown-detector"
+                cur.execute(UPSERT_PROCEDURE_SQL, tuple(bad))
+        except psycopg.errors.CheckViolation:
+            pass
+        else:
+            raise CheckFailed("the schema accepted an invalid procedure row")
+        raise psycopg.Rollback()  # the probe procedure is never kept
+    return probe_id
+
+
 def run(url: str, connect: Callable = connect_tiger, out: Callable[[str], None] = print,
         connect_timeout: int = 5, statement_timeout_ms: int = 5000) -> int:
     if not url:
@@ -162,15 +214,23 @@ def run(url: str, connect: Callable = connect_tiger, out: Callable[[str], None] 
             out("PASS history: two events inserted, duplicate ignored, recent read, time_bucket summary, "
                 "all rows validated (rolled back)")
 
+            step = "verify procedures"
+            procedure_probe = _verify_procedures(conn, statement_timeout_ms)
+            out("PASS procedures: insert / upsert / read-back validation / unchanged steps / CHECK constraint "
+                "(rolled back)")
+
             step = "cleanup"
             with conn.cursor() as cur:
+                cur.execute(SELECT_PROCEDURE_SQL, (procedure_probe,))
+                if cur.fetchone() is not None:
+                    raise CheckFailed("probe procedure still present after rollback")
                 cur.execute(SELECT_SETUP_SQL, (probe_id,))
                 if cur.fetchone() is not None:
                     raise CheckFailed("probe setup still present after rollback")
                 cur.execute(PROBE_CHECKS_SQL, (probe_setup,))
                 if cur.fetchone()[0] != 0:
                     raise CheckFailed("probe check events still present after rollback")
-            out("PASS no test setup or check event left in the database")
+            out("PASS no test setup, check event or procedure left in the database")
     except CheckFailed as exc:
         out(f"FAIL at {step}: {exc}")
         return 1

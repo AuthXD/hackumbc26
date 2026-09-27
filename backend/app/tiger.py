@@ -413,3 +413,137 @@ class TigerCheckHistoryRepository:
         message = f"History unavailable: could not {action} ({type(exc).__name__}).{hint}"
         log.warning(message)  # class name only: psycopg messages may include host or user
         self._set_status("error", message)
+
+
+# -- Procedure Library (plain table) ----------------------------------------------------------------------
+
+from .library import ProcedureStorageError, SavedProcedure  # noqa: E402
+
+PROCEDURE_COLUMNS = "id, name, summary, tags, detector_kind, step_count, object_count, procedure, " \
+                    "ai_generated_metadata, created_at, updated_at"
+SELECT_PROCEDURES_SQL = f"SELECT {PROCEDURE_COLUMNS} FROM teachback_procedures ORDER BY updated_at DESC, id"
+SELECT_PROCEDURE_SQL = f"SELECT {PROCEDURE_COLUMNS} FROM teachback_procedures WHERE id = %s"
+UPSERT_PROCEDURE_SQL = (
+    "INSERT INTO teachback_procedures (id, name, summary, tags, detector_kind, step_count, object_count, "
+    "procedure, ai_generated_metadata, created_at, updated_at) "
+    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()) "
+    "ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, summary = EXCLUDED.summary, tags = EXCLUDED.tags, "
+    "detector_kind = EXCLUDED.detector_kind, step_count = EXCLUDED.step_count, "
+    "object_count = EXCLUDED.object_count, procedure = EXCLUDED.procedure, "
+    "ai_generated_metadata = EXCLUDED.ai_generated_metadata, updated_at = NOW() "
+    f"RETURNING {PROCEDURE_COLUMNS}"
+)
+
+
+def procedure_params(saved: SavedProcedure) -> tuple:
+    proc = saved.procedure
+    return (
+        saved.id,
+        saved.name,
+        saved.summary,
+        list(saved.tags),
+        proc.detector_kind,
+        len(proc.steps),
+        len(proc.tracked_ids),
+        Jsonb(proc.to_json()),
+        saved.ai_generated_metadata,
+        datetime.fromtimestamp(saved.created_at, tz=timezone.utc),
+    )
+
+
+def row_to_procedure(row: Any) -> SavedProcedure:
+    """Every library row passes SavedProcedure validation, and its searchable columns must agree with the
+    payload (a row whose columns lie about its procedure is not trusted)."""
+    (pid, name, summary, tags, detector_kind, step_count, object_count, procedure, ai_meta,
+     created_at, updated_at) = row
+    saved = SavedProcedure.model_validate({
+        "id": pid, "name": name, "summary": summary, "tags": list(tags or ()), "procedure": _json(procedure),
+        "aiGeneratedMetadata": ai_meta, "createdAt": _epoch(created_at), "updatedAt": _epoch(updated_at),
+    })
+    if (detector_kind, step_count, object_count) != (saved.procedure.detector_kind, len(saved.procedure.steps),
+                                                     len(saved.procedure.tracked_ids)):
+        raise ValueError("searchable columns do not match the stored procedure")
+    return saved
+
+
+class TigerProcedureRepository:
+    """Named procedures in teachback_procedures. list/get read a validated cache; refresh/save touch Tiger."""
+
+    provider = "tiger"
+
+    def __init__(self, url: str, connect: Callable[[str, int], Any] | None = None,
+                 connect_timeout: int = 5, statement_timeout_ms: int = 5000) -> None:
+        self._url = url
+        self._connect = connect or connect_tiger
+        self._connect_timeout = connect_timeout
+        self._statement_timeout_ms = statement_timeout_ms
+        self._lock = threading.Lock()  # guards the cache and status only; never held during I/O
+        self._cache: dict[str, SavedProcedure] = {}
+        self.errors: list[str] = []
+        self._status = StorageStatus(provider="tiger", state="error",
+                                     message="Tiger Data procedures have not been loaded yet.")
+
+    def __repr__(self) -> str:
+        return "TigerProcedureRepository(<connection details hidden>)"
+
+    def _open(self):
+        return self._connect(self._url, self._connect_timeout)
+
+    def refresh(self) -> None:
+        try:
+            with self._open() as conn, conn.cursor() as cur:
+                cur.execute(SET_STATEMENT_TIMEOUT_SQL, (str(self._statement_timeout_ms),))
+                cur.execute(SELECT_PROCEDURES_SQL)
+                rows = cur.fetchall()
+        except Exception as exc:
+            self._fail("load", exc)
+            return
+        cache: dict[str, SavedProcedure] = {}
+        errors: list[str] = []
+        for row in rows:
+            try:
+                saved = row_to_procedure(row)
+                cache[saved.id] = saved
+            except Exception as exc:  # malformed rows are skipped and reported, never loaded
+                errors.append(_row_error(row, exc))
+        with self._lock:
+            self._cache, self.errors = cache, errors
+            self._status = StorageStatus(provider="tiger", state="ready",
+                                         message=f"Loaded {len(cache)} saved procedures from Tiger Data.")
+
+    def save(self, saved: SavedProcedure) -> SavedProcedure:
+        try:
+            with self._open() as conn, conn.cursor() as cur:
+                cur.execute(SET_STATEMENT_TIMEOUT_SQL, (str(self._statement_timeout_ms),))
+                cur.execute(UPSERT_PROCEDURE_SQL, procedure_params(saved))
+                row = cur.fetchone()
+            stored = row_to_procedure(row)
+        except Exception as exc:
+            if _is_rejection(exc):
+                raise ProcedureStorageError(f"Tiger Data rejected the procedure ({type(exc).__name__}).") from None
+            self._fail("save", exc)
+            raise ProcedureStorageError("Tiger Data is unavailable, so the procedure was not saved.") from None
+        with self._lock:
+            self._cache[stored.id] = stored
+            self._status = StorageStatus(provider="tiger", state="ready",
+                                         message=f"Saved \"{stored.name}\" to Tiger Data.")
+        return stored
+
+    def _fail(self, action: str, exc: Exception) -> None:
+        hint = " Run npm run tiger:check to create the table." if isinstance(exc, psycopg.errors.UndefinedTable) else ""
+        message = f"Tiger Data unavailable: could not {action} procedures ({type(exc).__name__}).{hint}"
+        log.warning(message)  # class name only: psycopg messages may include host or user
+        with self._lock:
+            self._status = StorageStatus(provider="tiger", state="error", message=message[:200])
+
+    def list(self) -> list[SavedProcedure]:
+        with self._lock:
+            return sorted(self._cache.values(), key=lambda p: (-p.updated_at, p.name.casefold()))
+
+    def get(self, procedure_id: str) -> SavedProcedure | None:
+        with self._lock:
+            return self._cache.get(procedure_id or "")
+
+    def status(self) -> StorageStatus:
+        with self._lock:
+            return self._status

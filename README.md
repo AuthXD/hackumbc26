@@ -163,6 +163,29 @@ to `benchmarks/locate_anything/evidence/size-sweep.json` and `size-sweep.md`.
 Stacking is not supported in this mode. If a scan fails, pause the procedure before switching back to Color; the
 learned semantic procedure is preserved.
 
+### Procedure Library (named, saved procedures)
+
+After **Finish Teaching**, the status card asks you to **Name and save this procedure** (Practice works straight
+away too). In **Procedure Library** below the timeline:
+
+1. The **Procedure name** field starts with a plain default such as *Four-step color-block procedure*. Edit it and
+   the optional summary, then press **Save Procedure**. Saving never changes the learned steps.
+2. Saving a name that already exists is an explicit replace: the button reads **Replace Saved Procedure** and the
+   hint says so. The original creation time is kept.
+3. Each card shows the name, summary, detector, object count, step count, and when it was last saved. **Load**
+   (only while idle) makes it the active procedure for **Practice**. It also restores the detector: Color, or
+   Semantic Objects with the saved object descriptions. If the semantic model is still loading, the procedure
+   stays loaded and the notice says to wait for **Model ready**. Without the semantic beta, a semantic procedure
+   loads but cannot be practiced.
+4. **Reset** clears only the active procedure; saved procedures and their thumbnails stay.
+
+Procedures are stored in Tiger Data when `TIGER_DATABASE_URL` is set (table `teachback_procedures`, migration
+003), otherwise as local files under `backend/data/procedures/`. They are separate from the active
+`procedure.json`, from saved setups, and from check history. If Tiger is configured but unreachable, the panel
+shows **Tiger Data unavailable** and saving is disabled; nothing is written locally instead, and Practice still
+works. Keyframe images are not stored in the database, so a procedure loaded on another machine simply shows no
+thumbnails.
+
 ### Setup Check mode (needs the Semantic Objects beta)
 
 Setup Check is separate from Teach/Practice. It learns what an organized workspace looks like, such as a lab bench,
@@ -302,12 +325,13 @@ backend/app/
   sources.py       camera ownership earned by valid frames
   setups.py        Setup Check types, local JSON store, deterministic checker
   history.py       SetupCheckEvent, readiness summary, bounded HistoryWriter
-  tiger.py         Tiger setups + check-history repositories
-backend/sql/       001_tiger_setups.sql, 002_tiger_setup_check_history.sql
+  library.py       SavedProcedure, local procedure library, deterministic default names
+  tiger.py         Tiger setups + check-history + procedure repositories
+backend/sql/       001_tiger_setups.sql, 002_tiger_setup_check_history.sql, 003_tiger_procedures.sql
 backend/mat_check.py     npm run mat:check
 backend/tiger_check.py   npm run tiger:check
 backend/demo_check.py    three live color demos
-frontend/src/      React UI (App, StatusCard, MatView, Timeline, SetupPanel, Overlay, Simulator)
+frontend/src/      React UI (App, StatusCard, MatView, Timeline, ProcedureLibrary, SetupPanel, Overlay, Simulator)
 benchmarks/locate_anything/size_sweep.py   npm run semantic:sizes
 ```
 
@@ -347,9 +371,9 @@ The local LocateAnything benchmark and constrained beta decision are documented 
   alarm, but never a false pass. Unexpected objects are only found among the configured object descriptions (at
   most 6 per scan, including the setup's own). Checks compare zones, not exact positions. While a semantic *procedure* is saved, its object descriptions stay locked (existing rule), so Setup
   Check scans with those descriptions until the procedure is reset.
-- Tiger Data storage covers saved setups only (not procedures). Setups saved from another machine appear after
-  a restart or **Retry connection**, not live. Moving from local JSON to Tiger does not copy existing local
-  setups; capture them again.
+- Tiger Data stores saved setups, check history, and named procedures (not keyframe images). Entries saved from
+  another machine appear after a restart, **Retry connection**, or **Refresh**, not live. Moving from local JSON to
+  Tiger does not copy existing local setups or procedures; save them again.
 - Check history needs Tiger (it is off in local mode) and is append-only; there is no retention policy yet. The
   readiness view shows the selected setup only, with hourly buckets for the last 24 h. Events still queued when
   the server stops get up to 5 s to drain. A process crash loses queued (unsaved) events, and they are never

@@ -329,3 +329,14 @@ selectable, with no stack trace. Mat calibration offered the four sticker steps.
 without video, then streaming after its first valid frame. After calibration the track became trustworthy with no
 scene verdict; a blank frame cleared the scene and did not leave a passing result. Setup Check showed Capture and
 Check without a stale complete verdict. No Vite error overlay.
+
+### Named Procedure Library with Tiger persistence (2026-09-27)
+
+After Finish Teaching the procedure is an unsaved draft with a deterministic default name. **Save Procedure**
+stores it in Tiger Data (`teachback_procedures`, migration 003) or local JSON; same name = explicit replace.
+**Load** (idle, Procedure mode) makes it the active procedure, restores the detector and tracked objects, and
+Practice judges it deterministically as before. Reset keeps the library. Setups, check history, mat, camera
+ownership, and `procedure.json`'s role are unchanged. Keyframes stay on disk only; missing thumbnails are hidden.
+
+Verification: 245 pytest, 31 Vitest, typecheck, build, and `npm run tiger:check` (procedure insert / upsert /
+read-back / CHECK probe rolled back, no probe row left) all passed.

@@ -19,6 +19,9 @@ from psycopg.types.json import Jsonb
 
 from app.tiger import (
     HYPERTABLE_SQL,
+    SELECT_PROCEDURE_SQL,
+    SELECT_PROCEDURES_SQL,
+    UPSERT_PROCEDURE_SQL,
     INSERT_CHECK_SQL,
     PARTITION_COLUMN_SQL,
     RECENT_CHECKS_SQL,
@@ -38,6 +41,7 @@ SECRETS = (SECRET_HOST, SECRET_USER, SECRET_PASSWORD, SECRET_URL)
 
 SLUG = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 CHECKS = "teachback_setup_checks"
+PROCEDURES = "teachback_procedures"
 
 
 def leaky_error(cls=psycopg.OperationalError):
@@ -47,7 +51,8 @@ def leaky_error(cls=psycopg.OperationalError):
 
 
 def empty_state() -> dict:
-    return {"setups_table": False, "rows": {}, "checks_table": False, "hypertable": False, "checks": {}}
+    return {"setups_table": False, "rows": {}, "checks_table": False, "hypertable": False, "checks": {},
+            "procedures_table": False, "procedures": {}}
 
 
 class FakeTiger:
@@ -83,8 +88,12 @@ class FakeTiger:
     def checks(self) -> dict:
         return self.state["checks"]
 
+    @property
+    def procedures(self) -> dict:
+        return self.state["procedures"]
+
     def migrate_all(self) -> "FakeTiger":
-        self.state.update(setups_table=True, checks_table=True, hypertable=True)
+        self.state.update(setups_table=True, checks_table=True, hypertable=True, procedures_table=True)
         return self
 
     def connect(self, url: str, timeout: int):
@@ -120,7 +129,8 @@ class FakeConnection:
         return False
 
     def commit(self):
-        groups = {"setups": ("setups_table", "rows"), "checks": ("checks_table", "hypertable", "checks")}
+        groups = {"setups": ("setups_table", "rows"), "checks": ("checks_table", "hypertable", "checks"),
+                  "procedures": ("procedures_table", "procedures")}
         with self.db.lock:
             for group in self.dirty:
                 for key in groups[group]:
@@ -184,6 +194,8 @@ class FakeCursor:
             self.conn.dirty.add("setups")
         if sql.startswith(f"CREATE TABLE IF NOT EXISTS {CHECKS} (") or sql == INSERT_CHECK_SQL:
             self.conn.dirty.add("checks")
+        if sql.startswith(f"CREATE TABLE IF NOT EXISTS {PROCEDURES} (") or sql == UPSERT_PROCEDURE_SQL:
+            self.conn.dirty.add("procedures")
         if sql.startswith("CREATE TABLE IF NOT EXISTS teachback_setups ("):
             w["setups_table"] = True
         elif sql.startswith("COMMENT ON TABLE teachback_setups "):
@@ -198,6 +210,16 @@ class FakeCursor:
             assert "(setup_id, checked_at DESC)" in sql
         elif sql.startswith(f"COMMENT ON TABLE {CHECKS} "):
             self._need(w["checks_table"], CHECKS)
+        elif sql.startswith(f"CREATE TABLE IF NOT EXISTS {PROCEDURES} ("):
+            for needed in ("id TEXT PRIMARY KEY", "procedure JSONB NOT NULL", "tags TEXT[]",
+                           "detector_kind IN ('color', 'semantic')", "step_count BETWEEN 1 AND 20"):
+                assert needed in sql, needed
+            assert "tsdb.hypertable" not in sql  # library rows are current records, not time series
+            w["procedures_table"] = True
+        elif sql.startswith(f"CREATE INDEX IF NOT EXISTS {PROCEDURES}_updated"):
+            self._need(w["procedures_table"], PROCEDURES)
+        elif sql.startswith(f"COMMENT ON TABLE {PROCEDURES} "):
+            self._need(w["procedures_table"], PROCEDURES)
         # -- common ------------------------------------------------------------------------------
         elif sql == SET_STATEMENT_TIMEOUT_SQL:
             self.result = [(params[0],)]
@@ -272,6 +294,24 @@ class FakeCursor:
                         counts[0] += 1
                         counts[1] += r[4] == complete_word
                 self.result = [(k, v[0], v[1]) for k, v in sorted(buckets.items())]
+        # -- procedure library (003) -------------------------------------------------------------
+        elif sql == UPSERT_PROCEDURE_SQL:
+            self._need(w["procedures_table"], PROCEDURES)
+            pid, name, summary, tags, kind, steps, objects, payload, ai, created = params
+            assert isinstance(payload, Jsonb) and isinstance(tags, list)
+            self._check_procedure(pid, name, summary, tags, kind, steps, objects, payload.obj)
+            now = datetime.now(timezone.utc)
+            if pid in w["procedures"]:  # DO UPDATE keeps the original created_at
+                created = w["procedures"][pid][9]
+            w["procedures"][pid] = (pid, name, summary, list(tags), kind, steps, objects, copy.deepcopy(payload.obj),
+                                    ai, created, max(now, created))
+            self.result = [w["procedures"][pid]]
+        elif sql == SELECT_PROCEDURES_SQL:
+            self._need(w["procedures_table"], PROCEDURES)
+            self.result = sorted(w["procedures"].values(), key=lambda r: (-r[10].timestamp(), r[0]))
+        elif sql == SELECT_PROCEDURE_SQL:
+            self._need(w["procedures_table"], PROCEDURES)
+            self.result = [w["procedures"][params[0]]] if params[0] in w["procedures"] else []
         elif sql == f"SELECT count(*) FROM {CHECKS} WHERE setup_id = %s":
             self._need(w["checks_table"], CHECKS)
             self.result = [(sum(r[2] == params[0] for r in w["checks"].values()),)]
@@ -282,6 +322,23 @@ class FakeCursor:
     def _need(exists: bool, table: str):
         if not exists:
             raise psycopg.errors.UndefinedTable(f'relation "{table}" does not exist')
+
+    @staticmethod
+    def _check_procedure(pid, name, summary, tags, kind, steps, objects, payload):
+        if not (isinstance(pid, str) and 1 <= len(pid) <= 40 and SLUG.match(pid)):
+            raise psycopg.errors.CheckViolation("teachback_procedures_id_slug")
+        if not (isinstance(name, str) and 1 <= len(name) <= 60):
+            raise psycopg.errors.CheckViolation("teachback_procedures_name_length")
+        if len(summary) > 200:
+            raise psycopg.errors.CheckViolation("teachback_procedures_summary_length")
+        if len(tags) > 3:
+            raise psycopg.errors.CheckViolation("teachback_procedures_tag_count")
+        if kind not in ("color", "semantic"):
+            raise psycopg.errors.CheckViolation("teachback_procedures_detector")
+        if not (1 <= steps <= 20) or not (1 <= objects <= 12):
+            raise psycopg.errors.CheckViolation("teachback_procedures_step_count")
+        if not isinstance(payload, dict):
+            raise psycopg.errors.CheckViolation("teachback_procedures_payload")
 
     @staticmethod
     def _check_setup(setup_id, name, objects):

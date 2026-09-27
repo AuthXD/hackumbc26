@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ServerUpdate } from "./types";
 
 type SlotState = "empty" | "recording" | "learned" | "upcoming" | "current" | "error" | "done";
@@ -11,6 +12,13 @@ const STATE_LABEL: Record<SlotState, string> = {
   error: "Fix this",
   done: "Done",
 };
+
+/** Keyframe thumbnails are optional (a loaded procedure may have lost them): a missing one is simply hidden. */
+function Thumb({ src, alt }: { src: string; alt: string }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  if (failed === src) return null;
+  return <img src={src} alt={alt} onError={() => setFailed(src)} />;
+}
 
 export function Timeline({ u }: { u: ServerUpdate | null }) {
   const steps = u?.procedure?.steps ?? [];
@@ -50,9 +58,9 @@ export function Timeline({ u }: { u: ServerUpdate | null }) {
                 {step.aiDescription && <p className="slot-rule">{step.description.instruction}</p>}
                 {(step.beforeImage || step.afterImage) && (
                   <div className="slot-frames">
-                    {step.beforeImage && <img src={step.beforeImage} alt={`Before step ${i + 1}`} />}
+                    {step.beforeImage && <Thumb src={step.beforeImage} alt={`Before step ${i + 1}`} />}
                     <span aria-hidden>→</span>
-                    {step.afterImage && <img src={step.afterImage} alt={`After step ${i + 1}`} />}
+                    {step.afterImage && <Thumb src={step.afterImage} alt={`After step ${i + 1}`} />}
                   </div>
                 )}
               </>

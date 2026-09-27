@@ -14,6 +14,16 @@ import numpy as np
 from .config import DATA_DIR, ColorRange, Settings, default_colors, settings
 from .engine import Event, PracticeEngine, TeachRecorder, speak
 from .detectors import ColorDetector, DEFAULT_LABELS, LatestScan, LocateAnythingDetector, parse_labels
+from .library import (
+    ProcedureMetadata,
+    ProcedureRepository,
+    ProcedureStorageError,
+    SavedProcedure,
+    clean_text,
+    create_procedure_repository,
+    fallback_metadata,
+    procedure_id_for,
+)
 from .history import CheckHistoryRepository, HistoryWriter, SetupCheckEvent, create_check_history_repository
 from .mat import MatFrame, MatService, canonical_vision, in_workspace
 from .models import Procedure, SceneState, StepText
@@ -43,6 +53,7 @@ PROCEDURE_FILE = DATA_DIR / "procedure.json"
 KEYFRAME_DIR = DATA_DIR / "keyframes"
 CALIBRATION_FILE = DATA_DIR / "calibration.json"
 MAT_DIR = DATA_DIR / "mat"  # per-camera mat calibrations; never touches procedures or setups
+PROCEDURE_LIBRARY_DIR = DATA_DIR / "procedures"  # named procedures; separate from procedure.json
 SETUP_DIR = DATA_DIR / "setups"  # kept apart from procedure.json so Setup Check can never touch it
 
 PROCEDURE_ACTIONS = ("teach", "finish", "undo_step", "practice", "reset", "pause")
@@ -51,7 +62,8 @@ PROCEDURE_ACTIONS = ("teach", "finish", "undo_step", "practice", "reset", "pause
 class Session:
     def __init__(self, cfg: Settings = settings, persist: bool = True,
                  setup_repository: SetupRepository | None = None,
-                 history_repository: CheckHistoryRepository | None = None) -> None:
+                 history_repository: CheckHistoryRepository | None = None,
+                 procedure_repository: ProcedureRepository | None = None) -> None:
         self.cfg = cfg
         self.persist = persist
         self.lock = threading.RLock()
@@ -88,6 +100,13 @@ class Session:
         # happens on the writer's single background thread, never under Session.lock.
         self.history: CheckHistoryRepository = history_repository or create_check_history_repository(cfg)
         self.history_writer = HistoryWriter(self.history, maxsize=cfg.history_queue_size)
+        # Procedure Library: named procedures (Tiger or local JSON). The active procedure stays self.procedure.
+        self.procedures: ProcedureRepository = (procedure_repository
+                                                or create_procedure_repository(cfg, PROCEDURE_LIBRARY_DIR))
+        self.loaded_procedure_id: str | None = None  # library entry the active procedure came from / was saved as
+        self.suggestion_state = "none"  # none | generating | suggested | unavailable | rejected
+        self.suggestion: ProcedureMetadata | None = None  # draft name/summary/tags offered to the user
+        self.library_revision = 0  # bumped when a save/load/refresh finishes, so the page knows its reply arrived
         self.setup_event: SetupCheckEvent | None = None  # the one event for the current verdict
         self.selected_setup_id: str | None = None
         self.setup_result: SetupCheckResult | None = None
@@ -332,6 +351,7 @@ class Session:
 
     def _cmd_teach(self) -> list[Event]:
         self._clear_procedure()
+        self._forget_draft()
         self.mode = "teaching"
         self.recorder = TeachRecorder(self.cfg.procedure.steps_per_procedure, self.cfg.procedure.min_objects)
         self.tracker.reset(required=None)
@@ -370,7 +390,8 @@ class Session:
         return [speak("Practice mode. Set up the starting layout.")]
 
     def _cmd_reset(self) -> list[Event]:
-        self._clear_procedure()
+        self._clear_procedure()  # the Procedure Library is untouched: reset only clears the active procedure
+        self._forget_draft()
         self.mode = "idle"
         self.recorder = None
         self.tracker.reset()
@@ -483,6 +504,176 @@ class Session:
 
     def mat_status(self) -> dict:
         return {**self.mat.status(self.frame_source), "viewSeq": self.mat_view_seq}
+
+    # -- Procedure Library ------------------------------------------------------------------------------
+
+    def _forget_draft(self) -> None:
+        self.loaded_procedure_id = None
+        self.suggestion_state, self.suggestion = "none", None
+
+    def _start_draft(self) -> None:
+        """A freshly taught procedure is an unsaved draft with a deterministic suggested name."""
+        self.loaded_procedure_id = None
+        self.suggestion = fallback_metadata(self.procedure)
+        self.suggestion_state = "unavailable"
+
+    @staticmethod
+    def _keyframe_keys(proc: Procedure) -> set[str]:
+        return {url.rsplit("/", 1)[-1].removesuffix(".jpg")
+                for s in proc.steps for url in (s.before_image, s.after_image) if url}
+
+    def _library_keyframe_keys(self) -> set[str]:
+        keys: set[str] = set()
+        for saved in self.procedures.list():  # validated cache, no database call
+            keys |= self._keyframe_keys(saved.procedure)
+        return keys
+
+    def _restore_keyframes(self, proc: Procedure) -> None:
+        """Thumbnails are optional: load whatever still exists on disk, silently skip the rest."""
+        if not self.persist:
+            return
+        for key in self._keyframe_keys(proc):
+            path = KEYFRAME_DIR / f"{key}.jpg"
+            if key not in self.keyframes and path.is_file():
+                try:
+                    self.keyframes[key] = path.read_bytes()
+                except OSError:
+                    pass
+
+    def _library_reply(self) -> dict:
+        with self.lock:
+            self.library_revision += 1
+            return self.snapshot()
+
+    def save_procedure(self, name: str, summary: str | None = None) -> dict:
+        self._save_procedure(name, summary)
+        return self._library_reply()
+
+    def _save_procedure(self, name: str, summary: str | None = None) -> dict:
+        """Save the active procedure under a name (explicit upsert). Never changes the learned procedure."""
+        with self.lock:
+            proc = self.procedure
+            if self.workspace != "procedure":
+                self.notice = "Switch to Procedure mode to save a procedure."
+                return self.snapshot()
+            if self.mode == "teaching":
+                self.notice = "Finish teaching before saving the procedure."
+                return self.snapshot()
+            if proc is None or not proc.steps:
+                self.notice = "Teach a procedure first, then save it."
+                return self.snapshot()
+            storage = self.procedures.status()
+            if storage.state != "ready":
+                self.notice = f"Procedure not saved: {storage.message}"
+                return self.snapshot()
+            meta = self.suggestion
+            name = clean_text(name)
+            summary = clean_text(summary) if summary is not None else (meta.summary if meta else "")
+            ai = (self.suggestion_state == "suggested" and meta is not None
+                  and name == meta.name and summary == meta.summary)
+            try:
+                pid = procedure_id_for(name)
+                existing = self.procedures.get(pid)
+                now = time.time()
+                saved = SavedProcedure(id=pid, name=name, summary=summary, tags=meta.tags if meta else (),
+                                       procedure=proc.model_copy(deep=True),
+                                       created_at=existing.created_at if existing else now, updated_at=now,
+                                       ai_generated_metadata=ai)
+            except ValueError as exc:
+                self.notice = f"Procedure not saved: {str(exc).splitlines()[0]}"
+                return self.snapshot()
+        # The save may be a database round trip (bounded timeouts); frames keep flowing meanwhile.
+        try:
+            stored = self.procedures.save(saved)
+        except (ProcedureStorageError, OSError, ValueError) as exc:
+            with self.lock:
+                self.notice = f"Procedure not saved: {str(exc).splitlines()[0]}"
+                return self.snapshot()
+        with self.lock:
+            if self.procedure is proc:  # still the same active procedure: it is now this library entry
+                self.loaded_procedure_id = stored.id
+            where = "Tiger Data" if self.procedures.status().provider == "tiger" else "this computer"
+            self.notice = (f'Updated saved procedure "{stored.name}" (same name, replaced) in {where}.' if existing
+                           else f'Saved procedure "{stored.name}" to {where}.')
+            return self.snapshot()
+
+    def load_procedure(self, procedure_id: str) -> dict:
+        self._load_procedure(procedure_id)
+        return self._library_reply()
+
+    def _load_procedure(self, procedure_id: str) -> dict:
+        """Make a saved procedure the active one for Practice. Setups, history, mat and cameras are untouched."""
+        with self.lock:
+            saved = self.procedures.get(str(procedure_id))
+            if self.workspace != "procedure":
+                self.notice = "Switch to Procedure mode to load a procedure."
+            elif self.mode != "idle":
+                self.notice = "Stop teaching or practice before loading another procedure."
+            elif saved is None:
+                self.notice = "That saved procedure is not available."
+            else:
+                self._activate(saved)
+            return self.snapshot()
+
+    def _activate(self, saved: SavedProcedure) -> None:
+        self.practice, self.recorder = None, None
+        self.pending_ai.clear()
+        self.procedure = saved.procedure.model_copy(deep=True)
+        self.loaded_procedure_id = saved.id
+        self.suggestion_state, self.suggestion = "none", None
+        self._restore_keyframes(self.procedure)
+        self._save()  # procedure.json mirrors the active procedure
+        self.tracker.reset()
+        self.reference_scene = None
+        kind = self.procedure.detector_kind
+        loaded = f'Loaded "{saved.name}".'
+        if kind == "semantic":
+            if not self.cfg.semantic_beta:
+                self.notice = f"{loaded} It uses Semantic Objects: enable TEACHBACK_SEMANTIC_BETA=1 to practice it."
+                return
+            self.configure_detector("semantic", ",".join(self.procedure.tracked_ids))
+            if self.detector_kind != "semantic":
+                self.notice = f"{loaded} Select Semantic Objects to practice it. ({self.notice})"
+                return
+            ready = self._worker_state() == "ready"
+            self.notice = (f"{loaded} Set up the starting layout, then press Practice." if ready else
+                           f"{loaded} Semantic model is loading: wait for Model ready, then press Practice.")
+            return
+        if self.detector_kind != "color":
+            self.configure_detector("color")
+        self.notice = f"{loaded} Set up the starting layout, then press Practice."
+
+    def refresh_procedures(self) -> dict:
+        self._refresh_procedures()
+        return self._library_reply()
+
+    def _refresh_procedures(self) -> dict:
+        """Explicitly reload the library from storage (outside Session.lock; may be a database round trip)."""
+        self.procedures.refresh()
+        with self.lock:
+            if self.loaded_procedure_id and self.procedures.get(self.loaded_procedure_id) is None:
+                self.loaded_procedure_id = None  # the active procedure stays; it is just not a library entry now
+            self.notice = self.procedures.status().message
+            return self.snapshot()
+
+    def library_status(self) -> dict:
+        """Cache-only view for snapshots: no storage access on this hot path."""
+        proc = self.procedure
+        draft = proc is not None and bool(proc.steps) and self.mode != "teaching"
+        meta = self.suggestion
+        return {
+            "storage": self.procedures.status().to_json(),
+            "procedures": [p.card() for p in self.procedures.list()],
+            "loadedId": self.loaded_procedure_id,
+            "revision": self.library_revision,
+            "errors": list(self.procedures.errors),
+            "draft": {
+                "available": draft,
+                "saved": draft and self.loaded_procedure_id is not None,
+                "suggestionState": self.suggestion_state,
+                "suggestion": meta.to_json() if meta else None,
+            },
+        }
 
     # -- Setup Check ----------------------------------------------------------------------------
 
@@ -720,8 +911,9 @@ class Session:
     def _complete_teaching(self) -> None:
         self.procedure = self.recorder.finish()
         self.mode = "idle"
-        self.notice = f"Learned {len(self.procedure.steps)} steps. Press Practice."
+        self.notice = f"Learned {len(self.procedure.steps)} steps. Name and save it, or press Practice."
         self._save()
+        self._start_draft()
 
     def _clear_procedure(self) -> None:
         self.procedure = None
@@ -730,8 +922,10 @@ class Session:
         self.pending_ai.clear()
         if self.persist:
             PROCEDURE_FILE.unlink(missing_ok=True)
+            keep = self._library_keyframe_keys()  # saved procedures keep their thumbnails
             for f in KEYFRAME_DIR.glob("*.jpg"):
-                f.unlink(missing_ok=True)
+                if f.stem not in keep:
+                    f.unlink(missing_ok=True)
 
     def _store_keyframe(self, jpeg: bytes) -> str:
         key = uuid.uuid4().hex[:12]
@@ -839,6 +1033,7 @@ class Session:
             "tracker": self.last_tracker.to_json() if self.last_tracker else None,
             "teach": self.recorder.to_json() if self.recorder and self.mode == "teaching" else None,
             "procedure": _procedure_json(proc),
+            "library": self.library_status(),
             "practice": self.practice.state.model_dump(by_alias=True, mode="json", exclude={"observed_state"})
             if self.practice and self.mode == "practicing"
             else None,

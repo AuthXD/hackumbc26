@@ -323,3 +323,23 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
 .phone-mat.mat-unsteady { color: var(--warning); }
 .ghost.phone-streaming { color: var(--success); }
 .ghost.phone-error { color: var(--error); }
+
+/* Procedure Library (below the timeline, never over the camera) */
+.library-panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 10px; }
+.library-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.library-head h2 { margin: 0; font-size: 18px; }
+.library-head .ghost { margin-left: auto; }
+.library-draft { display: grid; gap: 6px; }
+.library-draft .hint { margin: 0; }
+.suggestion { font-weight: 700; color: var(--muted); }
+.suggestion-suggested { color: var(--neutral); }
+.suggestion-rejected { color: var(--warning); }
+.library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.library-card { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; display: grid; gap: 6px; align-content: start; }
+.library-card.loaded { border-color: color-mix(in srgb, var(--success) 60%, transparent); background: color-mix(in srgb, var(--success) 6%, var(--panel)); }
+.library-card-head { display: flex; align-items: center; gap: 8px; }
+.library-card-head h3 { margin: 0; font-size: 17px; overflow-wrap: anywhere; }
+.library-loaded { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--success); border: 1px solid currentColor; border-radius: 6px; padding: 1px 6px; text-transform: uppercase; }
+.library-summary { margin: 0; color: #c9d3e0; font-size: 15px; }
+.library-meta { margin: 0; color: var(--muted); font-size: 13px; }
+.library-card .btn { justify-self: start; }

@@ -132,7 +132,8 @@ async def _describe(index: int, after_image: str | None) -> None:
 def health() -> dict:
     return {"ok": True, "mode": session.mode, "gemini": gemini.enabled, "elevenlabs": voice.enabled,
             "detector": session.detector_status(), "storage": session.setups.status().to_json(),
-            "history": {**session.history.status().to_json(), "writer": session.history_writer.stats()}}
+            "history": {**session.history.status().to_json(), "writer": session.history_writer.stats()},
+            "procedures": session.procedures.status().to_json()}
 
 
 @app.get("/api/phone-link")
@@ -231,6 +232,14 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     snap = await asyncio.to_thread(session.refresh_setups)
                 elif kind == "history_refresh":
                     snap = session.refresh_history()
+                elif kind == "procedure_save":
+                    summary = cmd.get("summary")
+                    snap = await asyncio.to_thread(session.save_procedure, str(cmd.get("name", "")),
+                                                   None if summary is None else str(summary))
+                elif kind == "procedure_load":
+                    snap = session.load_procedure(str(cmd.get("id", "")))
+                elif kind == "procedure_refresh":
+                    snap = await asyncio.to_thread(session.refresh_procedures)
                 else:
                     continue
                 await hub.broadcast(snap)
