@@ -5,6 +5,7 @@ import {
 } from "./MatView";
 import { Overlay } from "./Overlay";
 import { AskTeachBack } from "./AskTeachBack";
+import { DemoLab } from "./DemoLab";
 import { PhoneCamera, PhoneLinkButton } from "./PhoneLink";
 import { ProcedureLibrary } from "./ProcedureLibrary";
 import { SetupPanel } from "./SetupPanel";
@@ -39,6 +40,7 @@ export default function App() {
   const simRef = useRef<SimulatorHandle>(null);
   const [u, setU] = useState<ServerUpdate | null>(null);
   const [muted, setMuted] = useState(false);
+  const [demoMode, setDemoMode] = useState(() => new URLSearchParams(location.search).get("demo") === "1");
   const [aspect, setAspect] = useState(4 / 3);
   const [fps, setFps] = useState(0);
   const [remoteFrame, setRemoteFrame] = useState<string | null>(null);
@@ -277,7 +279,7 @@ export default function App() {
         </div>
       </header>
 
-      {(detector?.betaEnabled || u?.procedure?.detectorKind === "semantic") && (
+      {!demoMode && (detector?.betaEnabled || u?.procedure?.detectorKind === "semantic") && (
         <section className="semantic-controls" aria-label="Object detector">
           <div className="semantic-toolbar">
             <div className="segmented" role="group" aria-label="Detector mode">
@@ -326,16 +328,25 @@ export default function App() {
 
       <nav className="controls" aria-label="Mode controls">
         <div className="segmented workspace" role="group" aria-label="Product mode">
-          <button className={!setupMode ? "on" : ""} onClick={() => send({ type: "workspace", workspace: "procedure" })}>
+          <button className={!demoMode && !setupMode ? "on" : ""} onClick={() => {
+            setDemoMode(false);
+            send({ type: "workspace", workspace: "procedure" });
+          }}>
             Procedure
           </button>
-          <button className={setupMode ? "on" : ""} disabled={!u?.setup?.available || mode !== "idle"}
+          <button className={!demoMode && setupMode ? "on" : ""} disabled={!u?.setup?.available || mode !== "idle"}
             title={!u?.setup?.available ? "Setup Check needs the Semantic Objects beta (TEACHBACK_SEMANTIC_BETA=1)" : undefined}
-            onClick={() => send({ type: "workspace", workspace: "setup" })}>
+            onClick={() => {
+              setDemoMode(false);
+              send({ type: "workspace", workspace: "setup" });
+            }}>
             Setup Check
           </button>
+          <button className={demoMode ? "on" : ""} disabled={mode !== "idle"} onClick={() => setDemoMode(true)}>
+            Demo Lab
+          </button>
         </div>
-        {!setupMode && <>
+        {!demoMode && !setupMode && <>
         <button className={`btn teach ${mode === "teaching" ? "active" : ""}`}
           disabled={semantic && (source !== "camera" || objectDescriptions !== configuredObjects)} onClick={() => command("teach")}>
           Teach
@@ -362,6 +373,7 @@ export default function App() {
         {u?.notice && <span className="notice">{u.notice}</span>}
       </nav>
 
+      {demoMode ? <DemoLab /> : <>
       <main className="stage">
         <section className="camera-panel">
           {calibrating && (
@@ -512,6 +524,7 @@ export default function App() {
         </table>
         <pre>{JSON.stringify({ mode: u?.mode, tracker: u?.tracker, mat: u?.mat, teach: u?.teach, practice: u?.practice }, null, 2)}</pre>
       </details>
+      </>}
     </div>
   );
 }
