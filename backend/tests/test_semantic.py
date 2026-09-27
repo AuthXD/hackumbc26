@@ -12,7 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.config import Settings
-from app.detectors import AmbiguousScan, ColorDetector, LatestScan, LocateAnythingDetector, parse_labels, prepare_semantic_frame, semantic_scene
+from app.detectors import AmbiguousScan, ColorDetector, LatestScan, LocateAnythingDetector, demo_object_scene, parse_labels, prepare_semantic_frame, semantic_scene
 from app.engine import TeachRecorder
 from app.locate_worker import LocateWorker
 from app.models import SceneObject, SceneState
@@ -22,6 +22,7 @@ from .test_session import START, frame
 LABELS = ("blue bottle", "brown wallet")
 BOXES = [{"label": LABELS[0], "bbox": [.05, .2, .25, .4]},
          {"label": LABELS[1], "bbox": [.7, .3, .9, .5]}]
+SEPARATE_DUPLICATE = {"label": LABELS[0], "bbox": [.35, .2, .55, .4]}
 
 
 def scene(boxes=BOXES, now=0):
@@ -44,7 +45,7 @@ def test_invalid_or_duplicate_requested_labels(text):
         parse_labels(text)
 
 
-@pytest.mark.parametrize("boxes", [BOXES[:1], BOXES + [BOXES[0]],
+@pytest.mark.parametrize("boxes", [BOXES[:1], BOXES + [SEPARATE_DUPLICATE],
                                      [BOXES[0], {"label": "unknown", "bbox": [.7,.3,.9,.5]}],
                                      [BOXES[0], {**BOXES[1], "bbox": [.05,.2,.25,.4]}],
                                      [{**BOXES[0], "bbox": [0,0,float('nan'),1]}, BOXES[1]]])
@@ -54,10 +55,31 @@ def test_missing_duplicate_unexpected_overlapping_or_invalid_are_ambiguous(boxes
 
 
 def test_duplicate_and_unexpected_detections_explain_the_actual_problem():
-    with pytest.raises(AmbiguousScan, match='more than one object as "blue bottle"'):
-        scene(BOXES + [BOXES[0]])
+    with pytest.raises(AmbiguousScan, match='more than one separate object as "blue bottle"'):
+        scene(BOXES + [SEPARATE_DUPLICATE])
     with pytest.raises(AmbiguousScan, match='unexpected label: "unknown"'):
         scene([BOXES[0], {"label": "unknown", "bbox": [.7, .3, .9, .5]}])
+
+
+def test_overlapping_same_label_boxes_are_one_physical_object():
+    repeated = {"label": LABELS[0], "bbox": [.06, .21, .26, .41]}
+    result = scene([BOXES[0], repeated, BOXES[1]])
+    assert [obj.id for obj in result.objects] == list(LABELS)
+    assert result.objects[0].bbox == pytest.approx((.055, .205, .2, .2))
+
+
+def test_demo_fallback_tracks_the_three_live_objects_and_assigns_zones():
+    image = np.full((300, 900, 3), (65, 70, 68), np.uint8)
+    cv2.ellipse(image, (175, 150), (65, 45), 0, 25, 335, (40, 115, 45), 13)
+    cv2.rectangle(image, (155, 98), (195, 135), (18, 25, 20), -1)
+    cv2.rectangle(image, (370, 85), (535, 235), (25, 35, 220), -1)
+    cv2.rectangle(image, (680, 85), (815, 235), (125, 135, 145), -1)
+    labels = ("red box", "brown wallet", "green smartwatch")
+    result = demo_object_scene(image, labels, Settings().vision, 4)
+    assert [obj.id for obj in result.objects] == list(labels)
+    assert {obj.id: obj.zone for obj in result.objects} == {
+        "green smartwatch": "A", "red box": "B", "brown wallet": "C",
+    }
 
 
 def test_missing_detections_tell_the_user_to_check_descriptions():

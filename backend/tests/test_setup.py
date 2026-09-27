@@ -161,7 +161,7 @@ def test_semantic_scan_failure_cannot_produce_a_successful_check(setup_session):
     assert snap["setup"]["result"] is None  # the earlier pass is not left on screen
     assert snap["detector"]["scanState"] == "error"
     detector.error = None
-    detector.boxes = BOXES + [BOXES[0]]  # duplicate detection → ambiguous
+    detector.boxes = BOXES + [{**BOXES[0], "bbox": [.35, .2, .55, .4]}]  # two separate matches → ambiguous
     snap = check(s, 6)
     assert snap["setup"]["result"] is None and snap["detector"]["scanState"] == "ambiguous"
     detector.boxes = []  # nothing seen at all is a failed check, not a pass
