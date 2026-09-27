@@ -76,6 +76,35 @@ and `TEACHBACK_SEMANTIC_BETA=1` in `.env`.
 Semantic scans are manual and fail closed: an ambiguous scan produces no passing verdict. The local model can take
 roughly 15 seconds to load cold, so wait for **Local model ready** before beginning.
 
+### Deployment model
+
+The complete TeachBack app currently runs locally. The React/Vite frontend can be deployed to Vercel, but deploying
+the existing FastAPI backend there would not reproduce the local system: LocateAnything depends on a persistent
+worker, WSL, CUDA, local model files, and the laptop's NVIDIA GPU. The procedure session also lives in the running
+backend process.
+
+The practical hosted architecture is hybrid:
+
+```text
+Vercel frontend (teachonce.study)
+          ↓ HTTPS / secure WebSocket
+Cloudflare tunnel or permanent backend URL
+          ↓
+Local FastAPI + OpenCV + LocateAnything GPU worker
+          ↓
+Tiger Data and optional Gemini / ElevenLabs integrations
+```
+
+In a production cloud deployment, the frontend can remain on Vercel while the FastAPI and LocateAnything services
+move to a persistent GPU container host. Tiger Data already provides external persistence. This separation keeps
+camera controls and the interface easy to distribute without pretending that a serverless frontend host supplies
+the WSL/CUDA inference environment.
+
+See Vercel's documentation for [Vite](https://vercel.com/docs/frameworks/frontend/vite),
+[FastAPI](https://vercel.com/docs/frameworks/backend/fastapi),
+[WebSockets](https://vercel.com/kb/guide/do-vercel-serverless-functions-support-websocket-connections), and
+[function limits](https://vercel.com/docs/functions/limitations).
+
 ### Use a phone as the camera
 
 Press **Connect phone** on the laptop. TeachBack shows a QR and a phone-only page that requests the rear camera.
