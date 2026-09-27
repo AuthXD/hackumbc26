@@ -346,7 +346,7 @@ read-back / CHECK probe rolled back, no probe row left) all passed.
 With a Gemini key, a freshly taught draft gets a background name/summary/tags suggestion, validated for shape,
 length and grounding (only tracked objects, correct counts). Otherwise the deterministic name stays and the panel
 says why. **Ask TeachBack** answers questions about the active or a saved procedure using only its name, summary,
-tags, objects and ordered deterministic steps. Invalid step citations, untracked "required objects" and
+tags, objects, recorded starting placements and ordered deterministic steps. Invalid step citations, untracked "required objects" and
 untracked colors/objects are rejected in favor of stored-step answers. Gemini never changes a procedure or a
 verdict. Tests no longer inherit real Gemini/ElevenLabs keys from `.env`.
 

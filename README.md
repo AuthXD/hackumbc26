@@ -197,10 +197,11 @@ under **Procedure**, type a question under **Ask about this procedure**, and pre
 **Thinking…**, then the answer with **Step N** chips and any objects it needs, labeled *Grounded in this saved
 procedure*. Without a procedure it says **No procedure selected**.
 
-Gemini receives only the procedure's name, summary, tags, tracked objects and ordered step text as JSON data (no
-images, no camera frames). Stored names, tags and your question are marked as data, not instructions. Answers are
+Gemini receives only the procedure's name, summary, tags, tracked objects, recorded starting placements and ordered
+step text as JSON data (no images, coordinates or camera frames). Stored names, tags and your question are marked as data, not instructions. Answers are
 rejected if they are malformed, too long, cite a step that does not exist, list an object that was never tracked,
-or mention an untracked color or object. A disclaimer is kept only for medical or safety questions (a standard
+or mention an untracked color or object. Starting-setup questions also have a deterministic answer from the saved
+placements when Gemini is unavailable. A disclaimer is kept only for medical or safety questions (a standard
 one is added if Gemini omits it). Without a key, on a timeout, or on a rejected answer, TeachBack shows the stored
 steps instead with **Gemini unavailable, showing stored instructions** (or a note that the answer was not
 grounded). The transcript is kept per procedure in this browser tab only (last 6 questions). Loading or re-saving

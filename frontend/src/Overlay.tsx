@@ -35,8 +35,8 @@ export function Overlay({ scene, zones, activeZones }: { scene?: SceneState; zon
       ctx.font = "700 18px Inter, system-ui, sans-serif";
       const label = z.label;
       const tw = ctx.measureText(label).width;
-      // Label sits at the bottom of the zone so it rarely collides with object labels.
-      const ly = (z.y + z.h) * H - 34;
+      // The excluded band above the zone is reserved for its name, so labels never cover detected objects.
+      const ly = Math.max(2, z.y * H - 30);
       ctx.fillStyle = "rgba(10,14,20,0.72)";
       ctx.fillRect(z.x * W + 6, ly, tw + 16, 28);
       ctx.fillStyle = "#fff";

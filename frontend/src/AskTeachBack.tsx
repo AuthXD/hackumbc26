@@ -96,8 +96,8 @@ export function AskPanel({ targets, selected, turns, busy, question, onSelect, o
         <p className="hint">No procedure selected. Teach one, or save and load one from the library.</p>
       )}
       {turns.length > 0 && <ol className="ask-transcript">{turns.map((t, i) => <AskTurn key={i} turn={t} />)}</ol>}
-      <p className="hint">Answers use only the selected procedure's name, objects and steps. Practice still decides
-        whether each step was done correctly.</p>
+      <p className="hint">Answers use only the selected procedure's name, starting setup, objects and learned steps.
+        Practice still decides whether each step was done correctly.</p>
     </section>
   );
 }

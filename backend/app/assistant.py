@@ -50,8 +50,14 @@ class StepLine(CamelModel):
     instruction: str
 
 
+class InitialPlacement(CamelModel):
+    object: str
+    zone: str | None
+    stacked_on: str | None = None
+
+
 class ProcedureContext(CamelModel):
-    """The only facts Gemini is given: name, summary, tags, tracked objects, ordered deterministic steps."""
+    """The only facts Gemini is given: metadata, tracked objects, starting placements and ordered steps."""
 
     key: str  # which procedure this is (saved id + update time, or the unsaved draft)
     name: str
@@ -59,20 +65,28 @@ class ProcedureContext(CamelModel):
     tags: tuple[str, ...] = ()
     detector_kind: Literal["color", "semantic"]
     objects: tuple[str, ...]
+    initial_placements: tuple[InitialPlacement, ...]
     steps: tuple[StepLine, ...]
 
-    def prompt_data(self, *, detector: bool = False) -> dict:
+    def prompt_data(self, *, detector: bool = False, initial: bool = False) -> dict:
         data = {"name": self.name, "summary": self.summary, "tags": list(self.tags), "trackedObjects": list(self.objects),
                 "steps": [{"number": s.number, "instruction": s.instruction} for s in self.steps]}
         if detector:
             data["detector"] = self.detector_kind
+        if initial:
+            data["startingSetup"] = [p.to_json() for p in self.initial_placements]
         return data
 
 
 def procedure_context(key: str, name: str, summary: str, tags, procedure: Procedure) -> ProcedureContext:
+    initial = procedure.initial_state.arrangement(set(procedure.tracked_ids))
     return ProcedureContext(
         key=key, name=clean_text(name)[:60], summary=clean_text(summary)[:200], tags=tuple(tags)[:MAX_TAGS],
         detector_kind=procedure.detector_kind, objects=tuple(procedure.tracked_ids),
+        initial_placements=tuple(
+            InitialPlacement(object=oid, zone=initial[oid].zone, stacked_on=initial[oid].stacked_on)
+            for oid in procedure.tracked_ids if oid in initial
+        ),
         steps=tuple(StepLine(number=s.index + 1, instruction=s.description.instruction) for s in procedure.steps),
     )
 
@@ -219,7 +233,8 @@ ASK_SCHEMA = {
 ASK_PROMPT = """Answer the question about this procedure in at most 3 short sentences, using only the data.
 If the data does not answer it, say so. Cite step numbers that exist in the data. List any objects the person
 needs, copied exactly from trackedObjects. Leave "disclaimer" empty unless the question asks for a medical or
-safety judgment, which you must not give.
+safety judgment, which you must not give. Use startingSetup to answer questions about the initial layout; it is
+the recorded arrangement before Step 1.
 
 <procedure>
 {data}
@@ -231,7 +246,7 @@ safety judgment, which you must not give.
 
 
 def ask_prompt(ctx: ProcedureContext, question: str) -> str:
-    return ASK_PROMPT.format(data=json.dumps(ctx.prompt_data(), indent=1), question=json.dumps(question))
+    return ASK_PROMPT.format(data=json.dumps(ctx.prompt_data(initial=True), indent=1), question=json.dumps(question))
 
 
 def clean_question(question: str) -> str:
@@ -282,7 +297,14 @@ def fallback_answer(ctx: ProcedureContext, question: str, notice: str) -> AskAns
     words = set(WORD.findall(q))
     refs = [k for k in (_as_number(t) for t in STEP_REF.findall(q)) if 1 <= k <= len(ctx.steps)]
     objects = ", ".join(ctx.objects)
-    if refs:
+    if words & {"setup", "layout", "start", "starting", "initial", "begin", "beginning"}:
+        placements = []
+        for p in ctx.initial_placements:
+            where = f"Zone {p.zone}" if p.zone else "outside the zones"
+            placements.append(f"{p.object} on {p.stacked_on} in {where}" if p.stacked_on else f"{p.object} in {where}")
+        answer = "The starting setup is: " + "; ".join(placements) + "."
+        steps = ()
+    elif refs:
         answer = " ".join(f"Step {k}: {ctx.steps[k - 1].instruction}" for k in dict.fromkeys(refs))
         steps = tuple(dict.fromkeys(refs))
     elif words & {"object", "objects", "item", "items", "need", "needs", "required", "require", "use", "uses"}:

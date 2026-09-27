@@ -198,8 +198,9 @@ library is a separate store and never replaces that file's role.
 
 Gemini is text-only here and never judges or edits a procedure.
 
-- **ProcedureContext** `{key, name, summary, tags, detectorKind, objects, steps[{number, instruction}]}` is built
-  from the deterministic step descriptions only (not `aiDescription`, not images). An unsaved draft is sent as
+- **ProcedureContext** `{key, name, summary, tags, detectorKind, objects, initialPlacements, steps}` is built
+  from the recorded starting arrangement and deterministic step descriptions (not `aiDescription`, coordinates or
+  images). An unsaved draft is sent as
   "Unsaved procedure" with no summary. The prompt puts it in `<procedure>` tags as JSON, the question as a JSON
   string in `<question>` tags, and the system instruction says both are data.
 - **Metadata** (`validate_metadata`): exactly `{name, summary, tags}`; name at most 6 words / 60 characters; one
@@ -208,7 +209,7 @@ Gemini is text-only here and never judges or edits a procedure.
 - **Answers** (`validate_answer`): `{answer ≤600, relevantStepNumbers, requiredObjects, disclaimer}`; every step
   number (field or "step N" in the text) must exist; every required object must be a tracked id; the same
   vocabulary filter applies; a disclaimer survives only for a safety/medical question.
-- **Fallbacks** (`fallback_answer`): the asked-for step, the object list, the step count, or every step, with an
+- **Fallbacks** (`fallback_answer`): the starting setup, asked-for step, object list, step count, or every step, with an
   honest notice. `GeminiDescriber.ask` never raises; `suggest_metadata` returns `suggested | rejected |
   unavailable`. Logs carry only HTTP status codes and exception class names (no question or response text).
 - **Session**: `_start_draft` sets `suggestionState = generating` when a key exists and bumps `draft_seq`.
