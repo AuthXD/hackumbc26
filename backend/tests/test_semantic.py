@@ -60,6 +60,11 @@ def test_duplicate_and_unexpected_detections_explain_the_actual_problem():
         scene([BOXES[0], {"label": "unknown", "bbox": [.7, .3, .9, .5]}])
 
 
+def test_missing_detections_tell_the_user_to_check_descriptions():
+    with pytest.raises(AmbiguousScan, match="Missing or unable to identify: brown wallet.*descriptions match"):
+        scene(BOXES[:1])
+
+
 def test_mixed_identity_models_rejected():
     obj = scene().objects[0].model_dump()
     with pytest.raises(ValidationError):

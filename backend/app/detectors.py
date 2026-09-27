@@ -61,7 +61,10 @@ def semantic_scene(detections: list[dict], labels: tuple[str, ...], cfg: VisionC
                                    bbox=(x1, y1, x2 - x1, y2 - y1), center=((x1 + x2) / 2, (y1 + y2) / 2), zone=None)
     missing = [label for label in labels if label.casefold() not in by_label]
     if missing and not allow_missing:
-        raise AmbiguousScan("Cannot see exactly one of: " + ", ".join(missing) + ". Keep every object fully visible.")
+        raise AmbiguousScan(
+            "Missing or unable to identify: " + ", ".join(missing)
+            + ". Confirm the descriptions match the objects in view and keep each object fully visible."
+        )
     objects = [by_label[label.casefold()] for label in labels if label.casefold() in by_label]
     for i, a in enumerate(objects):
         ax, ay, aw, ah = a.bbox
