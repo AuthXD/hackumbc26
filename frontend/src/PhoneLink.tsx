@@ -1,5 +1,8 @@
 import { useEffect, useState, type RefObject } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import {
+  addPoint, calibrationReply, LANDMARK_STEPS, MatClickLayer, undoPoint, type Pt,
+} from "./MatView";
 import type { CameraStatus, ServerUpdate } from "./types";
 
 type PhoneLink = {
@@ -116,6 +119,31 @@ function FramingGuide({ aspect, corners }: { aspect: number; corners: [number, n
   </svg>;
 }
 
+export function PhoneMatCalibrationControls({ points, error, saving, onUndo, onRestart, onSave, onCancel }: {
+  points: Pt[];
+  error: string | null;
+  saving: boolean;
+  onUndo: () => void;
+  onRestart: () => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const next = points.length < 4 ? LANDMARK_STEPS[points.length] : null;
+  return <section className="phone-calibration" aria-label="Calibrate mat corners">
+    <strong>{next ? `Tap ${points.length + 1} of 4: ${next}` : "All four corners selected"}</strong>
+    <p>Tap the centre of each sticker on the live picture. Keep the phone and mat still.</p>
+    {error && <p className="semantic-error" role="alert">Calibration rejected: {error}</p>}
+    <div className="phone-calibration-buttons">
+      <button className="ghost" disabled={!points.length || saving} onClick={onUndo}>Undo</button>
+      <button className="ghost" disabled={!points.length || saving} onClick={onRestart}>Restart</button>
+      <button className="btn" disabled={points.length !== 4 || saving} onClick={onSave}>
+        {saving ? "Saving…" : "Save calibration"}
+      </button>
+      <button className="ghost" disabled={saving} onClick={onCancel}>Cancel</button>
+    </div>
+  </section>;
+}
+
 export function PhoneCamera({
   videoRef,
   connection,
@@ -132,6 +160,10 @@ export function PhoneCamera({
   send: (payload: object) => void;
 }) {
   const [aspect, setAspect] = useState(9 / 16);
+  const [matPoints, setMatPoints] = useState<Pt[] | null>(null);
+  const [matError, setMatError] = useState<string | null>(null);
+  const [matSave, setMatSave] = useState<{ notice: string; at: number } | null>(null);
+  const [replyTick, setReplyTick] = useState(0);
   // Tell the laptop what the camera is doing, so it never claims "streaming" on our behalf.
   useEffect(() => {
     if (connection !== "open") return;
@@ -147,6 +179,27 @@ export function PhoneCamera({
   }, [videoRef]);
 
   const streaming = u?.owner === true && u.camera?.phone === "streaming";
+  useEffect(() => {
+    if (!streaming) {
+      setMatPoints(null);
+      setMatSave(null);
+    }
+  }, [streaming]);
+  useEffect(() => {
+    if (!matSave) return;
+    const reply = calibrationReply(matSave.notice, u?.notice, performance.now() - matSave.at);
+    if (!reply) {
+      const id = window.setTimeout(() => setReplyTick((tick) => tick + 1), 250);
+      return () => window.clearTimeout(id);
+    }
+    setMatSave(null);
+    if (reply.ok) {
+      setMatPoints(null);
+      setMatError(null);
+    } else {
+      setMatError(reply.error);
+    }
+  }, [matSave, replyTick, u?.notice]);
   const status = error ? "Camera unavailable"
     : connection !== "open" ? "Connecting to laptop…"
     : !ready ? "Waiting for camera permission…"
@@ -154,9 +207,21 @@ export function PhoneCamera({
     : u?.active === false ? "Another phone is the active camera"
     : "Starting stream…";
   const mat = u?.mat;
+  const calibratingMat = matPoints !== null;
   const matLine = !streaming ? "" : !mat || mat.state === "off" ? ""
-    : mat.state === "uncalibrated" ? "Mat not calibrated yet. Calibrate it on the laptop."
+    : mat.state === "uncalibrated" ? "Mat not calibrated yet. Calibrate the corners below."
     : mat.message;
+  const startMatCalibration = () => {
+    setMatError(null);
+    setMatSave(null);
+    setMatPoints([]);
+  };
+  const saveMatCalibration = () => {
+    if (matPoints?.length !== 4) return;
+    setMatError(null);
+    setMatSave({ notice: u?.notice ?? "", at: performance.now() });
+    send({ type: "mat_calibrate", points: matPoints });
+  };
 
   return <main className="phone-camera-page">
     <div className="phone-camera-heading">
@@ -169,7 +234,30 @@ export function PhoneCamera({
     <div className="phone-preview-wrap">
       <video ref={videoRef} muted playsInline className="phone-preview" />
       {ready && !error && <FramingGuide aspect={aspect} corners={streaming && mat?.state === "tracking" ? mat.corners : null} />}
+      {matPoints && <MatClickLayer points={matPoints}
+        onAdd={(point) => {
+          setMatError(null);
+          setMatPoints(addPoint(matPoints, point));
+        }} />}
     </div>
+    {streaming && !calibratingMat && <button className="btn phone-calibrate-button" onClick={startMatCalibration}>
+      {mat?.calibrated ? "Recalibrate corners" : "Calibrate corners"}
+    </button>}
+    {matPoints && <PhoneMatCalibrationControls
+      points={matPoints}
+      error={matError}
+      saving={!!matSave}
+      onUndo={() => {
+        setMatError(null);
+        setMatPoints(undoPoint(matPoints));
+      }}
+      onRestart={() => {
+        setMatError(null);
+        setMatPoints([]);
+      }}
+      onSave={saveMatCalibration}
+      onCancel={() => setMatPoints(null)}
+    />}
     {matLine && <p className={`phone-mat mat-${mat?.state}`}>{matLine}</p>}
     {error && <section className="phone-camera-error">
       <strong>{error}</strong>

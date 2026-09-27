@@ -312,6 +312,8 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
 /* ---------- phone framing guide ---------- */
 .phone-preview-wrap { position: relative; width: 100%; }
 .phone-preview-wrap .phone-preview { display: block; width: 100%; }
+.phone-preview-wrap .mat-click { z-index: 2; touch-action: none; }
+.phone-preview-wrap .mat-click-dot { width: 34px; height: 34px; margin: -17px 0 0 -17px; font-size: 16px; }
 .phone-guide { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .guide-mat { fill: none; stroke: rgba(255,255,255,0.85); stroke-width: 0.6; stroke-dasharray: 2 1.5; vector-effect: non-scaling-stroke; }
 .guide-tracked { fill: rgba(52,211,153,0.12); stroke: var(--success); stroke-width: 2; vector-effect: non-scaling-stroke; }
@@ -321,6 +323,15 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
 .phone-mat.mat-tracking { color: var(--success); }
 .phone-mat.mat-lost, .phone-mat.mat-recalibrate { color: var(--error); }
 .phone-mat.mat-unsteady { color: var(--warning); }
+.phone-calibrate-button { width: 100%; margin-top: 10px; justify-content: center; }
+.phone-calibration {
+  display: grid; gap: 8px; margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--panel);
+}
+.phone-calibration > strong { font-size: 17px; }
+.phone-calibration > p { margin: 0; color: var(--muted); }
+.phone-calibration-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.phone-calibration-buttons button { min-height: 44px; justify-content: center; }
 .ghost.phone-streaming { color: var(--success); }
 .ghost.phone-error { color: var(--error); }
 

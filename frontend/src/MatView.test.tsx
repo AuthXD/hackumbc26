@@ -4,7 +4,7 @@ import {
   addPoint, CALIBRATION_REPLY_MS, calibrationReply, LANDMARK_STEPS, MAT_VIEW_STALE_MS, MatCalibrationBar, MatChip,
   MatClickLayer, MatLayout, matDisplay, MatUnavailable, RawQuad, StabilizedMat, undoPoint, type Pt,
 } from "./MatView";
-import { PhoneLinkButton } from "./PhoneLink";
+import { PhoneLinkButton, PhoneMatCalibrationControls } from "./PhoneLink";
 import { statusView, WORKER_LABEL } from "./StatusCard";
 import type { MatStatus, ServerUpdate } from "./types";
 
@@ -243,5 +243,18 @@ describe("phone state labels", () => {
     expect(renderToStaticMarkup(<PhoneLinkButton phone="connected" />)).toContain("Phone connected — no video yet");
     expect(renderToStaticMarkup(<PhoneLinkButton phone="streaming" />)).toContain("Phone streaming");
     expect(renderToStaticMarkup(<PhoneLinkButton phone="error" />)).toContain("Phone camera error");
+  });
+
+  it("puts the complete four-corner calibration workflow on the phone", () => {
+    const controls = (points: Pt[], error: string | null = null, saving = false) => renderToStaticMarkup(
+      <PhoneMatCalibrationControls points={points} error={error} saving={saving}
+        onUndo={noop} onRestart={noop} onSave={noop} onCancel={noop} />,
+    );
+    expect(controls([])).toContain("Tap 1 of 4: top-left purple creature");
+    expect(controls(clicks.slice(0, 3))).toContain("Tap 4 of 4: bottom-left SteelSeries logo");
+    expect(controls(clicks)).toContain("All four corners selected");
+    expect(controls(clicks)).not.toMatch(/<button[^>]*disabled=""[^>]*>Save calibration/);
+    expect(controls(clicks, "Wrong order")).toContain("Calibration rejected: Wrong order");
+    expect(controls(clicks, null, true)).toContain("Saving…");
   });
 });
